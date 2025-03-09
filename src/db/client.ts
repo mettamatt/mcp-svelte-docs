@@ -5,7 +5,9 @@ export const db = createClient({
 });
 
 export const verify_db = async () => {
-	const result = await db.execute('SELECT COUNT(*) as count FROM docs');
+	const result = await db.execute(
+		'SELECT COUNT(*) as count FROM docs',
+	);
 	const count = result.rows[0].count;
 	if (count === 0) {
 		throw new Error('Database is empty after initialization');

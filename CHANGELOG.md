@@ -1,10 +1,40 @@
 # mcp-svelte-docs
 
+## 0.0.15
+
+### Patch Changes
+
+- fix: Improve exact phrase matching for quoted search terms
+- fix: Ensure phrase-only searches return proper results even without keyword matches
+- refactor: Extract common search result handling into helper functions
+- chore: Code formatting with Prettier
+
+## 0.0.14
+
+### Patch Changes
+
+- feat: Add exact phrase matching using quoted search terms
+- feat: Implement related search term suggestions based on query
+  context
+- feat: Create comprehensive related terms mapping for Svelte concepts
+- docs: Update README to document new search capabilities
+
+## 0.0.13
+
+### Patch Changes
+
+- feat: Improve tool response formatting for better LLM consumption
+- feat: Rename tools with `svelte_` prefix to prevent namespace
+  conflicts
+- docs: Update README to reflect new tool names and improved response
+  format
+
 ## 0.0.12
 
 ### Patch Changes
 
-- refactor: Migrate to higher-level McpServer API from MCP TypeScript SDK
+- refactor: Migrate to higher-level McpServer API from MCP TypeScript
+  SDK
 - feat: Implement Zod schema validation for tool parameters
 - feat: Add support for resource templates with path parameters
 

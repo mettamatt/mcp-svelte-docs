@@ -20,9 +20,11 @@ variants suitable for different LLM context window sizes.
     - Term frequency
     - Section importance
     - Document type relevance
-    - Exact phrase matching
+    - Term weighting for key concepts
   - Context-aware result excerpts
-  - Related search suggestions
+  - Category-based result grouping
+  - Exact phrase matching with quotes
+  - Related term suggestions
 - 💾 Efficient caching with LibSQL
 - 🔄 Automatic content freshness checks
 - 📦 Support for package-specific documentation (Svelte, Kit, CLI)
@@ -99,7 +101,7 @@ Access documentation through these URIs:
 
 ### Tools
 
-#### search_docs
+#### svelte_search_docs
 
 Enhanced search functionality with advanced filtering and context
 awareness.
@@ -115,6 +117,8 @@ Parameters:
   - Default: 1
 - `include_hierarchy` (boolean, optional): Include section hierarchy
   - Default: true
+- `package` (string, optional): Filter by package
+  - Values: 'svelte', 'kit', 'cli'
 
 Example Usage:
 
@@ -126,18 +130,25 @@ Example Usage:
   "context": 1
 }
 
-// Tutorial Search
+// Tutorial Search with Exact Phrase
 {
-  "query": "routing sveltekit",
+  "query": "\"dynamic routes\" sveltekit",
   "doc_type": "tutorial",
   "context": 2,
   "include_hierarchy": true
 }
+
+// Package-specific Search
+{
+  "query": "server routes",
+  "doc_type": "all",
+  "package": "kit"
+}
 ```
 
-#### get_next_chunk
+#### svelte_get_next_chunk
 
-Retrieve subsequent chunks of large documents.
+Retrieve subsequent chunks of large Svelte documentation.
 
 Parameters:
 

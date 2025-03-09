@@ -1,6 +1,9 @@
 #!/usr/bin/env node
 
-import { McpServer, ResourceTemplate } from '@modelcontextprotocol/sdk/server/mcp.js';
+import {
+	McpServer,
+	ResourceTemplate,
+} from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { ListResourcesRequestSchema } from '@modelcontextprotocol/sdk/types.js';
 import { readFileSync } from 'fs';
@@ -31,27 +34,33 @@ const server = new McpServer({
 	version,
 });
 
-// Define the search_docs tool
+// Define the svelte_search_docs tool
 server.tool(
-	'search_docs',
+	'svelte_search_docs',
 	'Search Svelte documentation using specific technical terms and concepts. Returns relevant documentation sections with context.',
 	{
-		query: z.string().describe('Search keywords or natural language query'),
-		doc_type: z.enum(['api', 'tutorial', 'example', 'error', 'all'])
+		query: z
+			.string()
+			.describe('Search keywords or natural language query'),
+		doc_type: z
+			.enum(['api', 'tutorial', 'example', 'error', 'all'])
 			.default('all')
 			.describe('Filter by documentation type')
 			.optional(),
-		context: z.number()
+		context: z
+			.number()
 			.min(0)
 			.max(3)
 			.default(1)
 			.describe('Number of surrounding paragraphs')
 			.optional(),
-		include_hierarchy: z.boolean()
+		include_hierarchy: z
+			.boolean()
 			.default(true)
 			.describe('Include section hierarchy')
 			.optional(),
-		package: z.enum(['svelte', 'kit', 'cli'])
+		package: z
+			.enum(['svelte', 'kit', 'cli'])
 			.describe('Filter by package')
 			.optional(),
 	},
@@ -65,12 +74,70 @@ server.tool(
 				package: params.package as SearchOptions['package'],
 			};
 
-			const results = await search_docs(search_params);
+			const { results, related_suggestions } =
+				await search_docs(search_params);
+
+			// Format results in a more readable way for Claude
+			let formattedResponse = '';
+
+			if (results.length === 0) {
+				formattedResponse = 'No results found for your query.';
+
+				// Add related suggestions if available
+				if (related_suggestions && related_suggestions.length > 0) {
+					formattedResponse +=
+						'\n\n**Related search terms you might try:**\n';
+					related_suggestions.forEach((suggestion) => {
+						formattedResponse += `- ${suggestion.term}\n`;
+					});
+				}
+			} else {
+				// Group by category for better organization
+				const categoryGroups: Record<string, typeof results> = {};
+				results.forEach((result) => {
+					const category = result.category || 'other';
+					if (!categoryGroups[category]) {
+						categoryGroups[category] = [];
+					}
+					categoryGroups[category].push(result);
+				});
+
+				// Build a well-formatted, easy-to-consume response
+				formattedResponse = '# Search Results\n\n';
+
+				Object.entries(categoryGroups).forEach(
+					([category, groupResults]) => {
+						formattedResponse += `## ${category.charAt(0).toUpperCase() + category.slice(1)}\n\n`;
+
+						groupResults.forEach((result) => {
+							// Add hierarchy if included
+							if (result.hierarchy && params.include_hierarchy) {
+								formattedResponse += `### ${result.hierarchy.join(' > ')}\n\n`;
+							}
+
+							// Add content with type and package info
+							formattedResponse += `**Type:** ${result.type} | **Package:** ${result.package || 'core'}\n\n`;
+							formattedResponse += `${result.content}\n\n`;
+							formattedResponse += `---\n\n`;
+						});
+					},
+				);
+
+				// Add related suggestions if available
+				if (related_suggestions && related_suggestions.length > 0) {
+					formattedResponse += '## Related Topics\n\n';
+					formattedResponse += 'You might also want to explore:\n\n';
+					related_suggestions.forEach((suggestion) => {
+						formattedResponse += `- ${suggestion.term}\n`;
+					});
+				}
+			}
+
 			return {
 				content: [
 					{
 						type: 'text',
-						text: JSON.stringify(results, null, 2),
+						text: formattedResponse,
 					},
 				],
 			};
@@ -87,16 +154,19 @@ server.tool(
 				isError: true,
 			};
 		}
-	}
+	},
 );
 
-// Define the get_next_chunk tool
+// Define the svelte_get_next_chunk tool
 server.tool(
-	'get_next_chunk',
-	'Retrieve subsequent chunks of large documents',
+	'svelte_get_next_chunk',
+	'Retrieve subsequent chunks of large Svelte documentation',
 	{
 		uri: z.string().describe('Document URI'),
-		chunk_number: z.number().min(1).describe('Chunk number to retrieve (1-based)'),
+		chunk_number: z
+			.number()
+			.min(1)
+			.describe('Chunk number to retrieve (1-based)'),
 	},
 	async (params, _extra) => {
 		try {
@@ -173,7 +243,7 @@ server.tool(
 				isError: true,
 			};
 		}
-	}
+	},
 );
 
 // Define the llms.txt resource
@@ -181,7 +251,8 @@ server.resource(
 	'llms-txt',
 	'svelte-docs://docs/llms.txt',
 	{
-		description: 'Standard documentation covering Svelte core concepts and features',
+		description:
+			'Standard documentation covering Svelte core concepts and features',
 	},
 	async (uri, _extra) => {
 		try {
@@ -199,18 +270,22 @@ server.resource(
 			}
 
 			return {
-				contents: [{
-					uri: uri.href,
-					text: String(result.rows[0].content),
-					mimeType: 'text/plain',
-				}]
+				contents: [
+					{
+						uri: uri.href,
+						text: String(result.rows[0].content),
+						mimeType: 'text/plain',
+					},
+				],
 			};
 		} catch (error) {
-			throw new Error(`Error fetching docs: ${
-				error instanceof Error ? error.message : String(error)
-			}`);
+			throw new Error(
+				`Error fetching docs: ${
+					error instanceof Error ? error.message : String(error)
+				}`,
+			);
 		}
-	}
+	},
 );
 
 // Define the llms-full.txt resource
@@ -218,7 +293,8 @@ server.resource(
 	'llms-full-txt',
 	'svelte-docs://docs/llms-full.txt',
 	{
-		description: 'Comprehensive documentation including advanced topics and detailed examples',
+		description:
+			'Comprehensive documentation including advanced topics and detailed examples',
 	},
 	async (uri, _extra) => {
 		try {
@@ -236,18 +312,22 @@ server.resource(
 			}
 
 			return {
-				contents: [{
-					uri: uri.href,
-					text: String(result.rows[0].content),
-					mimeType: 'text/plain',
-				}]
+				contents: [
+					{
+						uri: uri.href,
+						text: String(result.rows[0].content),
+						mimeType: 'text/plain',
+					},
+				],
 			};
 		} catch (error) {
-			throw new Error(`Error fetching docs: ${
-				error instanceof Error ? error.message : String(error)
-			}`);
+			throw new Error(
+				`Error fetching docs: ${
+					error instanceof Error ? error.message : String(error)
+				}`,
+			);
 		}
-	}
+	},
 );
 
 // Define the llms-small.txt resource
@@ -255,7 +335,8 @@ server.resource(
 	'llms-small-txt',
 	'svelte-docs://docs/llms-small.txt',
 	{
-		description: 'Condensed documentation focusing on essential concepts',
+		description:
+			'Condensed documentation focusing on essential concepts',
 	},
 	async (uri, _extra) => {
 		try {
@@ -273,18 +354,22 @@ server.resource(
 			}
 
 			return {
-				contents: [{
-					uri: uri.href,
-					text: String(result.rows[0].content),
-					mimeType: 'text/plain',
-				}]
+				contents: [
+					{
+						uri: uri.href,
+						text: String(result.rows[0].content),
+						mimeType: 'text/plain',
+					},
+				],
 			};
 		} catch (error) {
-			throw new Error(`Error fetching docs: ${
-				error instanceof Error ? error.message : String(error)
-			}`);
+			throw new Error(
+				`Error fetching docs: ${
+					error instanceof Error ? error.message : String(error)
+				}`,
+			);
 		}
-	}
+	},
 );
 
 // Define the svelte resource
@@ -292,7 +377,8 @@ server.resource(
 	'svelte-docs',
 	'svelte-docs://docs/svelte/llms.txt',
 	{
-		description: 'Documentation specific to Svelte core library features and APIs',
+		description:
+			'Documentation specific to Svelte core library features and APIs',
 	},
 	async (uri, _extra) => {
 		try {
@@ -310,18 +396,22 @@ server.resource(
 			}
 
 			return {
-				contents: [{
-					uri: uri.href,
-					text: String(result.rows[0].content),
-					mimeType: 'text/plain',
-				}]
+				contents: [
+					{
+						uri: uri.href,
+						text: String(result.rows[0].content),
+						mimeType: 'text/plain',
+					},
+				],
 			};
 		} catch (error) {
-			throw new Error(`Error fetching docs: ${
-				error instanceof Error ? error.message : String(error)
-			}`);
+			throw new Error(
+				`Error fetching docs: ${
+					error instanceof Error ? error.message : String(error)
+				}`,
+			);
 		}
-	}
+	},
 );
 
 // Define the kit resource
@@ -329,7 +419,8 @@ server.resource(
 	'kit-docs',
 	'svelte-docs://docs/kit/llms.txt',
 	{
-		description: 'Documentation for SvelteKit application framework and routing',
+		description:
+			'Documentation for SvelteKit application framework and routing',
 	},
 	async (uri, _extra) => {
 		try {
@@ -347,18 +438,22 @@ server.resource(
 			}
 
 			return {
-				contents: [{
-					uri: uri.href,
-					text: String(result.rows[0].content),
-					mimeType: 'text/plain',
-				}]
+				contents: [
+					{
+						uri: uri.href,
+						text: String(result.rows[0].content),
+						mimeType: 'text/plain',
+					},
+				],
 			};
 		} catch (error) {
-			throw new Error(`Error fetching docs: ${
-				error instanceof Error ? error.message : String(error)
-			}`);
+			throw new Error(
+				`Error fetching docs: ${
+					error instanceof Error ? error.message : String(error)
+				}`,
+			);
 		}
-	}
+	},
 );
 
 // Define the cli resource
@@ -366,7 +461,8 @@ server.resource(
 	'cli-docs',
 	'svelte-docs://docs/cli/llms.txt',
 	{
-		description: 'Documentation for Svelte command-line tools and utilities',
+		description:
+			'Documentation for Svelte command-line tools and utilities',
 	},
 	async (uri, _extra) => {
 		try {
@@ -384,18 +480,22 @@ server.resource(
 			}
 
 			return {
-				contents: [{
-					uri: uri.href,
-					text: String(result.rows[0].content),
-					mimeType: 'text/plain',
-				}]
+				contents: [
+					{
+						uri: uri.href,
+						text: String(result.rows[0].content),
+						mimeType: 'text/plain',
+					},
+				],
 			};
 		} catch (error) {
-			throw new Error(`Error fetching docs: ${
-				error instanceof Error ? error.message : String(error)
-			}`);
+			throw new Error(
+				`Error fetching docs: ${
+					error instanceof Error ? error.message : String(error)
+				}`,
+			);
 		}
-	}
+	},
 );
 
 // Register resources list handler
@@ -403,7 +503,7 @@ server.server.setRequestHandler(
 	ListResourcesRequestSchema,
 	async () => {
 		return await get_doc_resources();
-	}
+	},
 );
 
 // Run server

@@ -40,28 +40,33 @@ export const init_docs = async () => {
 
 		// Package docs are required
 		const package_results = await Promise.all(
-			Object.keys(PACKAGE_DOCS).map(pkg => 
-				fetch_docs(pkg as Package)
-			)
+			Object.keys(PACKAGE_DOCS).map((pkg) =>
+				fetch_docs(pkg as Package),
+			),
 		);
 
-		if (package_results.some(r => !r || r.length === 0)) {
-			throw new Error('Failed to fetch required package documentation');
+		if (package_results.some((r) => !r || r.length === 0)) {
+			throw new Error(
+				'Failed to fetch required package documentation',
+			);
 		}
 		console.error('Successfully fetched package documentation');
 
 		// Try root docs but don't fail if they're not available
 		try {
 			await Promise.all(
-				Object.entries(ROOT_DOCS).map(([variant, url]) => 
-					fetch_docs(undefined, variant.replace('.txt', '') as DocVariant)
-				)
+				Object.entries(ROOT_DOCS).map(([variant, url]) =>
+					fetch_docs(
+						undefined,
+						variant.replace('.txt', '') as DocVariant,
+					),
+				),
 			);
 			console.error('Successfully fetched root documentation');
 		} catch (error) {
 			console.error('Optional root docs not available:', error);
 		}
-		
+
 		console.error('Successfully initialized all documentation');
 	} catch (error) {
 		console.error('Failed to initialize docs:', error);
@@ -123,7 +128,9 @@ const process_docs = async (
 	package_name?: Package,
 	variant?: DocVariant,
 ) => {
-	console.error(`Processing docs for ${package_name || variant || 'root'}`);
+	console.error(
+		`Processing docs for ${package_name || variant || 'root'}`,
+	);
 	const sections = content.split('\n\n');
 	const processed_docs: Array<DocMetadata & { content: string }> = [];
 	const index_operations: Array<{
@@ -142,7 +149,8 @@ const process_docs = async (
 			if (section.startsWith('# ')) {
 				current_hierarchy = [section.substring(2)];
 				// Detect doc type from heading
-				if (section.toLowerCase().includes('api')) current_type = 'api';
+				if (section.toLowerCase().includes('api'))
+					current_type = 'api';
 				else if (section.toLowerCase().includes('tutorial'))
 					current_type = 'tutorial';
 				else if (section.toLowerCase().includes('example'))
@@ -178,10 +186,13 @@ const process_docs = async (
 					.toLowerCase()
 					.split(/\W+/)
 					.filter((term) => term.length > 2)
-					.reduce((acc, term) => {
-						acc[term] = (acc[term] || 0) + 1;
-						return acc;
-					}, {} as Record<string, number>);
+					.reduce(
+						(acc, term) => {
+							acc[term] = (acc[term] || 0) + 1;
+							return acc;
+						},
+						{} as Record<string, number>,
+					);
 
 				index_operations.push({
 					id: doc.id,
@@ -237,20 +248,31 @@ const process_docs = async (
 				// Process search index in smaller sub-batches
 				if (batch_ops.length > 0) {
 					const index_batch_size = 100; // Smaller batch size for index terms
-					for (let j = 0; j < batch_ops.length; j += index_batch_size) {
-						const index_batch = batch_ops.slice(j, j + index_batch_size);
-						
+					for (
+						let j = 0;
+						j < batch_ops.length;
+						j += index_batch_size
+					) {
+						const index_batch = batch_ops.slice(
+							j,
+							j + index_batch_size,
+						);
+
 						// Process each document's terms
 						for (const op of index_batch) {
 							if (op.terms.length === 0) continue;
-							
-							const term_placeholders = op.terms.map(() => '(?, ?, ?, ?)').join(',');
-							const term_values = op.terms.flatMap(({ term, frequency }) => [
-								op.id,
-								term,
-								frequency,
-								op.weight,
-							]);
+
+							const term_placeholders = op.terms
+								.map(() => '(?, ?, ?, ?)')
+								.join(',');
+							const term_values = op.terms.flatMap(
+								({ term, frequency }) => [
+									op.id,
+									term,
+									frequency,
+									op.weight,
+								],
+							);
 
 							await db.execute({
 								sql: `INSERT OR REPLACE INTO search_index 
@@ -263,9 +285,14 @@ const process_docs = async (
 				}
 
 				await db.execute('COMMIT');
-				console.error(`Processed batch ${Math.floor(i / batch_size) + 1} of ${Math.ceil(processed_docs.length / batch_size)}`);
+				console.error(
+					`Processed batch ${Math.floor(i / batch_size) + 1} of ${Math.ceil(processed_docs.length / batch_size)}`,
+				);
 			} catch (error) {
-				console.error('Error during batch processing, rolling back:', error);
+				console.error(
+					'Error during batch processing, rolling back:',
+					error,
+				);
 				await db.execute('ROLLBACK');
 				throw error;
 			}
@@ -305,43 +332,49 @@ export const get_doc_resources = async () => {
 	return {
 		resources: [
 			// Root level docs
-			{ 
+			{
 				uri: 'svelte-docs://docs/llms.txt',
 				name: 'Svelte Documentation (Standard)',
-				description: 'Standard documentation covering Svelte core concepts and features',
-				mimeType: 'text/plain'
+				description:
+					'Standard documentation covering Svelte core concepts and features',
+				mimeType: 'text/plain',
 			},
-			{ 
+			{
 				uri: 'svelte-docs://docs/llms-full.txt',
 				name: 'Svelte Documentation (Full)',
-				description: 'Comprehensive documentation including advanced topics and detailed examples',
-				mimeType: 'text/plain'
+				description:
+					'Comprehensive documentation including advanced topics and detailed examples',
+				mimeType: 'text/plain',
 			},
-			{ 
+			{
 				uri: 'svelte-docs://docs/llms-small.txt',
 				name: 'Svelte Documentation (Concise)',
-				description: 'Condensed documentation focusing on essential concepts',
-				mimeType: 'text/plain'
+				description:
+					'Condensed documentation focusing on essential concepts',
+				mimeType: 'text/plain',
 			},
 			// Package docs
-			{ 
+			{
 				uri: 'svelte-docs://docs/svelte/llms.txt',
 				name: 'Svelte Core Documentation',
-				description: 'Documentation specific to Svelte core library features and APIs',
-				mimeType: 'text/plain'
+				description:
+					'Documentation specific to Svelte core library features and APIs',
+				mimeType: 'text/plain',
 			},
-			{ 
+			{
 				uri: 'svelte-docs://docs/kit/llms.txt',
 				name: 'SvelteKit Documentation',
-				description: 'Documentation for SvelteKit application framework and routing',
-				mimeType: 'text/plain'
+				description:
+					'Documentation for SvelteKit application framework and routing',
+				mimeType: 'text/plain',
 			},
-			{ 
+			{
 				uri: 'svelte-docs://docs/cli/llms.txt',
 				name: 'Svelte CLI Documentation',
-				description: 'Documentation for Svelte command-line tools and utilities',
-				mimeType: 'text/plain'
-			}
+				description:
+					'Documentation for Svelte command-line tools and utilities',
+				mimeType: 'text/plain',
+			},
 		],
 	};
 };
