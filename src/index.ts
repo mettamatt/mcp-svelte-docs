@@ -525,6 +525,21 @@ async function run_server() {
 	}
 }
 
+// Graceful shutdown handlers
+process.on('SIGINT', async () => {
+	console.error('Received SIGINT, shutting down...');
+	await server.close();
+	// Database should auto-close when the process exits
+	process.exit(0);
+});
+
+process.on('SIGTERM', async () => {
+	console.error('Received SIGTERM, shutting down...');
+	await server.close();
+	// Database should auto-close when the process exits
+	process.exit(0);
+});
+
 run_server().catch((error) => {
 	console.error('Fatal error running server:', error);
 	process.exit(1);
