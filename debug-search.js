@@ -8,7 +8,13 @@ const TEST_QUERIES = [
   { query: 'routing params', description: 'Multiple term query' },
   { query: 'component lifecycle', description: 'Core concepts query' },
   { query: 'nonexistent term', description: 'Query with no results' },
-  { query: '"reactive programming"', description: 'Exact phrase that should exist in docs' }
+  { query: '"reactive programming"', description: 'Exact phrase that should exist in docs' },
+  { query: 'runes svelte', description: 'Category-specific query' },
+  { query: 'routing', description: 'Package-specific query', package: 'kit' },
+  { query: '"dynamic routes" params', description: 'Mixed phrase and term query' },
+  { query: 'error warning debug', description: 'Multiple weighted terms' },
+  { query: 'component', description: 'Doc type filtering', doc_type: 'api' },
+  { query: 'error', description: 'Error document search', doc_type: 'error' }
 ];
 
 async function runTests() {
@@ -20,7 +26,12 @@ async function runTests() {
     
     try {
       const start = Date.now();
-      const result = await search_docs({ query: test.query });
+      const options = { 
+        query: test.query,
+        package: test.package,
+        doc_type: test.doc_type || 'all'
+      };
+      const result = await search_docs(options);
       const duration = Date.now() - start;
       
       console.log(`Found ${result.results.length} results in ${duration}ms`);
