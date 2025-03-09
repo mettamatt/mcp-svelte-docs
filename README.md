@@ -56,6 +56,8 @@ Add this to your Cline MCP settings:
 }
 ```
 
+> **Note:** The server runs over standard I/O transport, not HTTP. It doesn't require any open ports for normal operation. The MCP Inspector debug mode is only used during development.
+
 ### Claude Desktop with WSL Configuration
 
 For WSL environments, add this to your Claude Desktop configuration:
@@ -176,8 +178,14 @@ pnpm build
 4. Run in development mode:
 
 ```bash
-pnpm dev
+# With debug inspector UI (runs on ports 5173 and 3000)
+pnpm dev -- --mcp-debug
+
+# Without inspector (runs on stdio only, recommended for production)
+pnpm start
 ```
+
+> **Note:** The MCP Inspector debug UI runs on port 5173 with a proxy server on port 3000. These ports must be available. The debug UI is only needed for development and troubleshooting - it's not required for normal operation.
 
 ### Publishing
 
