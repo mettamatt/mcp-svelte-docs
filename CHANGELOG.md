@@ -1,5 +1,13 @@
 # mcp-svelte-docs
 
+## 0.0.12
+
+### Patch Changes
+
+- refactor: Migrate to higher-level McpServer API from MCP TypeScript SDK
+- feat: Implement Zod schema validation for tool parameters
+- feat: Add support for resource templates with path parameters
+
 ## 0.0.11
 
 ### Patch Changes

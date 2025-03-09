@@ -1,14 +1,8 @@
 #!/usr/bin/env node
 
-import { Server } from '@modelcontextprotocol/sdk/server/index.js';
+import { McpServer, ResourceTemplate } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
-import {
-	CallToolRequestSchema,
-	ListResourcesRequestSchema,
-	ListToolsRequestSchema,
-	ReadResourceRequestSchema,
-	Tool,
-} from '@modelcontextprotocol/sdk/types.js';
+import { ListResourcesRequestSchema } from '@modelcontextprotocol/sdk/types.js';
 import { readFileSync } from 'fs';
 import { dirname, join } from 'path';
 import { fileURLToPath } from 'url';
@@ -22,6 +16,7 @@ import {
 	should_update_docs,
 } from './docs/fetcher.js';
 import { search_docs, SearchOptions } from './search/index.js';
+import { z } from 'zod';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -30,183 +25,81 @@ const pkg = JSON.parse(
 );
 const { name, version } = pkg;
 
-// Define tools
-const get_next_chunk_tool: Tool = {
-	name: 'get_next_chunk',
-	description: 'Retrieve subsequent chunks of large documents',
-	inputSchema: {
-		type: 'object',
-		required: ['uri', 'chunk_number'],
-		properties: {
-			uri: {
-				type: 'string',
-				description: 'Document URI',
-			},
-			chunk_number: {
-				type: 'number',
-				description: 'Chunk number to retrieve (1-based)',
-				minimum: 1,
-			},
-		},
-	},
-};
-
-const search_docs_tool: Tool = {
-	name: 'search_docs',
-	description: `Search Svelte documentation using specific technical terms and concepts. Returns relevant documentation sections with context.
-
-Query Guidelines:
-- Use technical terms found in documentation (e.g., "route parameters", "state management", "lifecycle hooks")
-- Search for specific features or concepts rather than asking questions
-- Include relevant package names for targeted results (e.g., "sveltekit", "stores")
-
-Example Queries by Category:
-
-1. Svelte 5 Runes:
-- "state management runes"          (finds $state and state management docs)
-- "derived state calculation"       (locates $derived documentation)
-- "effect lifecycle runes"          (finds $effect usage patterns)
-- "bindable props svelte"          (shows $bindable property usage)
-
-2. Component Patterns:
-- "component lifecycle"             (finds lifecycle documentation)
-- "event handling svelte5"          (shows new event handling patterns)
-- "component state management"      (locates state management docs)
-- "props typescript definition"     (finds prop typing information)
-
-3. SvelteKit Features:
-- "route parameters sveltekit"      (finds routing documentation)
-- "server routes api"               (locates API route docs)
-- "page data loading"              (shows data loading patterns)
-- "form actions sveltekit"         (finds form handling docs)
-
-4. Error Documentation:
-- "missing export error"           (finds specific error docs)
-- "binding validation errors"      (locates validation error info)
-- "lifecycle hook errors"          (shows lifecycle-related errors)
-- "typescript prop errors"         (finds prop typing errors)
-
-Query Pattern Examples:
-❌ "How do I manage state?" → ✅ "state management runes"
-❌ "What are lifecycle hooks?" → ✅ "component lifecycle"
-❌ "How do I handle events?" → ✅ "event handling svelte5"
-❌ "How do I create dynamic routes?" → ✅ "route parameters sveltekit"`,
-	inputSchema: {
-		type: 'object',
-		required: ['query'],
-		properties: {
-			query: {
-				type: 'string',
-				description: 'Search keywords or natural language query',
-			},
-			doc_type: {
-				type: 'string',
-				enum: ['api', 'tutorial', 'example', 'error', 'all'],
-				default: 'all',
-				description: 'Filter by documentation type',
-			},
-			context: {
-				type: 'number',
-				minimum: 0,
-				maximum: 3,
-				default: 1,
-				description: 'Number of surrounding paragraphs',
-			},
-			include_hierarchy: {
-				type: 'boolean',
-				default: true,
-				description: 'Include section hierarchy',
-			},
-			package: {
-				type: 'string',
-				enum: ['svelte', 'kit', 'cli'],
-				description: 'Filter by package',
-			},
-		},
-	},
-};
-
 // Create MCP server instance
-const server = new Server(
-	{
-		name,
-		version,
-	},
-	{
-		capabilities: {
-			tools: {
-				schema: {
-					type: 'object',
-					properties: {
-						tools: {
-							type: 'array',
-							items: {
-								type: 'object',
-								properties: {
-									name: { type: 'string' },
-									description: { type: 'string' },
-									inputSchema: { type: 'object' },
-								},
-								required: ['name', 'inputSchema'],
-							},
-						},
-					},
-					required: ['tools'],
-				},
-				tools: [search_docs_tool, get_next_chunk_tool],
-			},
-			resources: {
-				schema: {
-					type: 'object',
-					properties: {
-						resources: {
-							type: 'array',
-							items: {
-								type: 'object',
-								properties: {
-									uri: { type: 'string' },
-									metadata: {
-										type: 'object',
-										properties: {
-											contentType: { type: 'string' },
-										},
-									},
-								},
-								required: ['uri'],
-							},
-						},
-					},
-					required: ['resources'],
-				},
-				schemes: ['svelte-docs'],
-			},
-		},
-	},
-);
-
-// Handle tool listing
-server.setRequestHandler(ListToolsRequestSchema, async () => {
-	return {
-		tools: [search_docs_tool, get_next_chunk_tool],
-	};
+const server = new McpServer({
+	name,
+	version,
 });
 
-// Handle tool calls
-server.setRequestHandler(CallToolRequestSchema, async (request) => {
-	const { name: tool_name, arguments: params } = request.params;
-
-	if (tool_name === 'get_next_chunk') {
+// Define the search_docs tool
+server.tool(
+	'search_docs',
+	'Search Svelte documentation using specific technical terms and concepts. Returns relevant documentation sections with context.',
+	{
+		query: z.string().describe('Search keywords or natural language query'),
+		doc_type: z.enum(['api', 'tutorial', 'example', 'error', 'all'])
+			.default('all')
+			.describe('Filter by documentation type')
+			.optional(),
+		context: z.number()
+			.min(0)
+			.max(3)
+			.default(1)
+			.describe('Number of surrounding paragraphs')
+			.optional(),
+		include_hierarchy: z.boolean()
+			.default(true)
+			.describe('Include section hierarchy')
+			.optional(),
+		package: z.enum(['svelte', 'kit', 'cli'])
+			.describe('Filter by package')
+			.optional(),
+	},
+	async (params, _extra) => {
 		try {
-			if (
-				!params ||
-				typeof params.uri !== 'string' ||
-				typeof params.chunk_number !== 'number'
-			) {
-				throw new Error(
-					'Invalid parameters: uri and chunk_number are required',
-				);
-			}
+			const search_params: SearchOptions = {
+				query: params.query,
+				doc_type: params.doc_type as SearchOptions['doc_type'],
+				context: params.context,
+				include_hierarchy: params.include_hierarchy,
+				package: params.package as SearchOptions['package'],
+			};
 
+			const results = await search_docs(search_params);
+			return {
+				content: [
+					{
+						type: 'text',
+						text: JSON.stringify(results, null, 2),
+					},
+				],
+			};
+		} catch (error) {
+			return {
+				content: [
+					{
+						type: 'text',
+						text: `Error searching docs: ${
+							error instanceof Error ? error.message : String(error)
+						}`,
+					},
+				],
+				isError: true,
+			};
+		}
+	}
+);
+
+// Define the get_next_chunk tool
+server.tool(
+	'get_next_chunk',
+	'Retrieve subsequent chunks of large documents',
+	{
+		uri: z.string().describe('Document URI'),
+		chunk_number: z.number().min(1).describe('Chunk number to retrieve (1-based)'),
+	},
+	async (params, _extra) => {
+		try {
 			const { uri, chunk_number } = params;
 			if (!uri.startsWith('svelte-docs://docs/')) {
 				throw new Error(`Invalid URI: ${uri}`);
@@ -235,7 +128,6 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 				}
 			}
 
-			const chunk_size = 50000; // 50KB chunks
 			const result = await db.execute({
 				sql: `SELECT content FROM docs 
 					  WHERE package = ? AND variant = ?
@@ -264,7 +156,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 				content: [
 					{
 						type: 'text',
-						text: result.rows[0].content,
+						text: String(result.rows[0].content),
 					},
 				],
 			};
@@ -281,97 +173,25 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 				isError: true,
 			};
 		}
-	} else if (tool_name === 'search_docs') {
-		try {
-			if (!params || typeof params.query !== 'string') {
-				throw new Error(
-					'Invalid search parameters: query is required',
-				);
-			}
-
-			const search_params: SearchOptions = {
-				query: params.query,
-				doc_type: params.doc_type as SearchOptions['doc_type'],
-				context: params.context as number,
-				include_hierarchy: params.include_hierarchy as boolean,
-				package: params.package as SearchOptions['package'],
-			};
-
-			const results = await search_docs(search_params);
-			return {
-				content: [
-					{
-						type: 'text',
-						text: JSON.stringify(results, null, 2),
-					},
-				],
-			};
-		} catch (error) {
-			return {
-				content: [
-					{
-						type: 'text',
-						text: `Error searching docs: ${
-							error instanceof Error ? error.message : String(error)
-						}`,
-					},
-				],
-				isError: true,
-			};
-		}
 	}
+);
 
-	throw new Error(`Unknown tool: ${tool_name}`);
-});
-
-// Handle resource requests
-server.setRequestHandler(
-	ReadResourceRequestSchema,
-	async (request) => {
-		const { uri } = request.params;
-
-		if (!uri.startsWith('svelte-docs://docs/')) {
-			throw new Error(`Invalid URI: ${uri}`);
-		}
-
-		const path = uri.substring('svelte-docs://docs/'.length);
-
-		// Parse the path to determine what docs to fetch
-		let package_name: Package | undefined;
-		let variant: DocVariant | undefined;
-
-		if (
-			path.startsWith('svelte/') ||
-			path.startsWith('kit/') ||
-			path.startsWith('cli/')
-		) {
-			// Package-specific docs
-			const [pkg] = path.split('/') as [Package];
-			package_name = pkg;
-		} else {
-			// Root level docs
-			const variant_map: Record<string, DocVariant> = {
-				'llms.txt': 'llms',
-				'llms-full.txt': 'llms-full',
-				'llms-small.txt': 'llms-small',
-			};
-			variant = variant_map[path];
-
-			if (!variant) {
-				throw new Error(`Invalid doc variant: ${path}`);
-			}
-		}
-
+// Define the llms.txt resource
+server.resource(
+	'llms-txt',
+	'svelte-docs://docs/llms.txt',
+	{
+		description: 'Standard documentation covering Svelte core concepts and features',
+	},
+	async (uri, _extra) => {
 		try {
-			// Check if docs need updating
-			if (await should_update_docs(package_name, variant)) {
-				await fetch_docs(package_name, variant);
+			if (await should_update_docs(undefined, 'llms')) {
+				await fetch_docs(undefined, 'llms');
 			}
 
-			// Return appropriate doc variant
 			const result = await db.execute({
-				sql: `SELECT content FROM docs WHERE package = ? AND variant = ?`,
-				args: [package_name || null, variant || null],
+				sql: `SELECT content FROM docs WHERE package IS NULL AND variant = ?`,
+				args: ['llms'],
 			});
 
 			if (result.rows.length === 0) {
@@ -379,36 +199,212 @@ server.setRequestHandler(
 			}
 
 			return {
-				content: [
-					{
-						type: 'text',
-						text: result.rows[0].content,
-					},
-				],
-				metadata: {
-					contentType: 'text/plain',
-				},
+				contents: [{
+					uri: uri.href,
+					text: String(result.rows[0].content),
+					mimeType: 'text/plain',
+				}]
 			};
 		} catch (error) {
-			return {
-				content: [
-					{
-						type: 'text',
-						text: `Error fetching docs: ${
-							error instanceof Error ? error.message : String(error)
-						}`,
-					},
-				],
-				isError: true,
-			};
+			throw new Error(`Error fetching docs: ${
+				error instanceof Error ? error.message : String(error)
+			}`);
 		}
-	},
+	}
 );
 
-// Add resource listing handler
-server.setRequestHandler(ListResourcesRequestSchema, async () => {
-	return await get_doc_resources();
-});
+// Define the llms-full.txt resource
+server.resource(
+	'llms-full-txt',
+	'svelte-docs://docs/llms-full.txt',
+	{
+		description: 'Comprehensive documentation including advanced topics and detailed examples',
+	},
+	async (uri, _extra) => {
+		try {
+			if (await should_update_docs(undefined, 'llms-full')) {
+				await fetch_docs(undefined, 'llms-full');
+			}
+
+			const result = await db.execute({
+				sql: `SELECT content FROM docs WHERE package IS NULL AND variant = ?`,
+				args: ['llms-full'],
+			});
+
+			if (result.rows.length === 0) {
+				throw new Error('Documentation not found');
+			}
+
+			return {
+				contents: [{
+					uri: uri.href,
+					text: String(result.rows[0].content),
+					mimeType: 'text/plain',
+				}]
+			};
+		} catch (error) {
+			throw new Error(`Error fetching docs: ${
+				error instanceof Error ? error.message : String(error)
+			}`);
+		}
+	}
+);
+
+// Define the llms-small.txt resource
+server.resource(
+	'llms-small-txt',
+	'svelte-docs://docs/llms-small.txt',
+	{
+		description: 'Condensed documentation focusing on essential concepts',
+	},
+	async (uri, _extra) => {
+		try {
+			if (await should_update_docs(undefined, 'llms-small')) {
+				await fetch_docs(undefined, 'llms-small');
+			}
+
+			const result = await db.execute({
+				sql: `SELECT content FROM docs WHERE package IS NULL AND variant = ?`,
+				args: ['llms-small'],
+			});
+
+			if (result.rows.length === 0) {
+				throw new Error('Documentation not found');
+			}
+
+			return {
+				contents: [{
+					uri: uri.href,
+					text: String(result.rows[0].content),
+					mimeType: 'text/plain',
+				}]
+			};
+		} catch (error) {
+			throw new Error(`Error fetching docs: ${
+				error instanceof Error ? error.message : String(error)
+			}`);
+		}
+	}
+);
+
+// Define the svelte resource
+server.resource(
+	'svelte-docs',
+	'svelte-docs://docs/svelte/llms.txt',
+	{
+		description: 'Documentation specific to Svelte core library features and APIs',
+	},
+	async (uri, _extra) => {
+		try {
+			if (await should_update_docs('svelte')) {
+				await fetch_docs('svelte');
+			}
+
+			const result = await db.execute({
+				sql: `SELECT content FROM docs WHERE package = ? AND variant IS NULL`,
+				args: ['svelte'],
+			});
+
+			if (result.rows.length === 0) {
+				throw new Error('Documentation not found');
+			}
+
+			return {
+				contents: [{
+					uri: uri.href,
+					text: String(result.rows[0].content),
+					mimeType: 'text/plain',
+				}]
+			};
+		} catch (error) {
+			throw new Error(`Error fetching docs: ${
+				error instanceof Error ? error.message : String(error)
+			}`);
+		}
+	}
+);
+
+// Define the kit resource
+server.resource(
+	'kit-docs',
+	'svelte-docs://docs/kit/llms.txt',
+	{
+		description: 'Documentation for SvelteKit application framework and routing',
+	},
+	async (uri, _extra) => {
+		try {
+			if (await should_update_docs('kit')) {
+				await fetch_docs('kit');
+			}
+
+			const result = await db.execute({
+				sql: `SELECT content FROM docs WHERE package = ? AND variant IS NULL`,
+				args: ['kit'],
+			});
+
+			if (result.rows.length === 0) {
+				throw new Error('Documentation not found');
+			}
+
+			return {
+				contents: [{
+					uri: uri.href,
+					text: String(result.rows[0].content),
+					mimeType: 'text/plain',
+				}]
+			};
+		} catch (error) {
+			throw new Error(`Error fetching docs: ${
+				error instanceof Error ? error.message : String(error)
+			}`);
+		}
+	}
+);
+
+// Define the cli resource
+server.resource(
+	'cli-docs',
+	'svelte-docs://docs/cli/llms.txt',
+	{
+		description: 'Documentation for Svelte command-line tools and utilities',
+	},
+	async (uri, _extra) => {
+		try {
+			if (await should_update_docs('cli')) {
+				await fetch_docs('cli');
+			}
+
+			const result = await db.execute({
+				sql: `SELECT content FROM docs WHERE package = ? AND variant IS NULL`,
+				args: ['cli'],
+			});
+
+			if (result.rows.length === 0) {
+				throw new Error('Documentation not found');
+			}
+
+			return {
+				contents: [{
+					uri: uri.href,
+					text: String(result.rows[0].content),
+					mimeType: 'text/plain',
+				}]
+			};
+		} catch (error) {
+			throw new Error(`Error fetching docs: ${
+				error instanceof Error ? error.message : String(error)
+			}`);
+		}
+	}
+);
+
+// Register resources list handler
+server.server.setRequestHandler(
+	ListResourcesRequestSchema,
+	async () => {
+		return await get_doc_resources();
+	}
+);
 
 // Run server
 async function run_server() {
