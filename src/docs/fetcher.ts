@@ -55,7 +55,7 @@ export const init_docs = async () => {
 		// Try root docs but don't fail if they're not available
 		try {
 			await Promise.all(
-				Object.entries(ROOT_DOCS).map(([variant, url]) =>
+				Object.entries(ROOT_DOCS).map(([variant, _url]) =>
 					fetch_docs(
 						undefined,
 						variant.replace('.txt', '') as DocVariant,
@@ -144,19 +144,17 @@ const process_docs = async (
 	let current_hierarchy: string[] = [];
 
 	try {
-		// First pass - collect all docs and prepare index data
+		// First pass - collect docs and prepare index data
 		for (const section of sections) {
 			if (section.startsWith('# ')) {
 				current_hierarchy = [section.substring(2)];
 				// Detect doc type from heading
-				if (section.toLowerCase().includes('api'))
-					current_type = 'api';
-				else if (section.toLowerCase().includes('tutorial'))
+				const lower = section.toLowerCase();
+				if (lower.includes('api')) current_type = 'api';
+				else if (lower.includes('tutorial'))
 					current_type = 'tutorial';
-				else if (section.toLowerCase().includes('example'))
-					current_type = 'example';
-				else if (section.toLowerCase().includes('error'))
-					current_type = 'error';
+				else if (lower.includes('example')) current_type = 'example';
+				else if (lower.includes('error')) current_type = 'error';
 			} else if (section.startsWith('## ')) {
 				current_hierarchy = [
 					current_hierarchy[0],
@@ -210,18 +208,15 @@ const process_docs = async (
 			console.error('No documents processed');
 			return [];
 		}
-
 		console.error(`Processed ${processed_docs.length} documents`);
 
-		// Process in batches to avoid statement size limits
-		const batch_size = 500; // Reduced batch size for better stability
+		// Process in batches
+		const batch_size = 500;
 		for (let i = 0; i < processed_docs.length; i += batch_size) {
 			const batch_docs = processed_docs.slice(i, i + batch_size);
 			const batch_ops = index_operations.slice(i, i + batch_size);
 
-			// Start transaction for this batch
 			await db.execute('BEGIN TRANSACTION');
-
 			try {
 				// Batch insert for docs
 				if (batch_docs.length > 0) {
@@ -239,54 +234,47 @@ const process_docs = async (
 
 					await db.execute({
 						sql: `INSERT OR REPLACE INTO docs 
-							 (id, type, package, variant, content, hierarchy) 
-							 VALUES ${placeholders}`,
+                  (id, type, package, variant, content, hierarchy) 
+                  VALUES ${placeholders}`,
 						args: values,
 					});
 				}
 
 				// Process search index in smaller sub-batches
-				if (batch_ops.length > 0) {
-					const index_batch_size = 100; // Smaller batch size for index terms
-					for (
-						let j = 0;
-						j < batch_ops.length;
-						j += index_batch_size
-					) {
-						const index_batch = batch_ops.slice(
-							j,
-							j + index_batch_size,
+				const index_batch_size = 100;
+				for (let j = 0; j < batch_ops.length; j += index_batch_size) {
+					const index_batch = batch_ops.slice(
+						j,
+						j + index_batch_size,
+					);
+					for (const op of index_batch) {
+						if (op.terms.length === 0) continue;
+						const term_placeholders = op.terms
+							.map(() => '(?, ?, ?, ?)')
+							.join(',');
+						const term_values = op.terms.flatMap(
+							({ term, frequency }) => [
+								op.id,
+								term,
+								frequency,
+								op.weight,
+							],
 						);
 
-						// Process each document's terms
-						for (const op of index_batch) {
-							if (op.terms.length === 0) continue;
-
-							const term_placeholders = op.terms
-								.map(() => '(?, ?, ?, ?)')
-								.join(',');
-							const term_values = op.terms.flatMap(
-								({ term, frequency }) => [
-									op.id,
-									term,
-									frequency,
-									op.weight,
-								],
-							);
-
-							await db.execute({
-								sql: `INSERT OR REPLACE INTO search_index 
-									 (doc_id, term, frequency, section_importance) 
-									 VALUES ${term_placeholders}`,
-								args: term_values,
-							});
-						}
+						await db.execute({
+							sql: `INSERT OR REPLACE INTO search_index 
+                    (doc_id, term, frequency, section_importance) 
+                    VALUES ${term_placeholders}`,
+							args: term_values,
+						});
 					}
 				}
 
 				await db.execute('COMMIT');
 				console.error(
-					`Processed batch ${Math.floor(i / batch_size) + 1} of ${Math.ceil(processed_docs.length / batch_size)}`,
+					`Processed batch ${Math.floor(i / batch_size) + 1} of ${Math.ceil(
+						processed_docs.length / batch_size,
+					)}`,
 				);
 			} catch (error) {
 				console.error(
@@ -312,7 +300,7 @@ export const should_update_docs = async (
 	const result = await db.execute({
 		sql: `SELECT last_updated FROM docs 
           WHERE (package = ? OR package IS NULL) 
-          AND (variant = ? OR variant IS NULL)
+            AND (variant = ? OR variant IS NULL)
           ORDER BY last_updated DESC 
           LIMIT 1`,
 		args: [package_name || null, variant || null],
@@ -326,7 +314,6 @@ export const should_update_docs = async (
 	return Date.now() - last_updated.getTime() > UPDATE_INTERVAL;
 };
 
-// Function to fetch and parse the documentation index
 export const get_doc_resources = async () => {
 	// Return the available documentation resources with the correct scheme
 	return {
