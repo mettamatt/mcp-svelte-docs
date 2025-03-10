@@ -2,129 +2,129 @@ import { db } from '../db/client.js';
 import { DocType, Package } from '../docs/fetcher.js';
 
 export interface SearchOptions {
-  query: string;
-  doc_type?: DocType | 'all';
-  context?: number;
-  include_hierarchy?: boolean;
-  package?: Package;
+	query: string;
+	doc_type?: DocType | 'all';
+	context?: number;
+	include_hierarchy?: boolean;
+	package?: Package;
 }
 
 export interface SearchResult {
-  content: string;
-  type: DocType;
-  package: Package;
-  hierarchy?: string[];
-  relevance_score: number;
-  category?: 'runes' | 'components' | 'routing' | 'error';
+	content: string;
+	type: DocType;
+	package: Package;
+	hierarchy?: string[];
+	relevance_score: number;
+	category?: 'runes' | 'components' | 'routing' | 'error';
 }
 
 export interface RelatedSuggestion {
-  term: string;
-  relevance: number;
+	term: string;
+	relevance: number;
 }
 
 export const TERM_WEIGHTS: Record<string, number> = {
-  runes: 1.5,
-  $state: 1.5,
-  $derived: 1.5,
-  $effect: 1.5,
-  $props: 1.5,
-  $bindable: 1.5,
-  lifecycle: 1.3,
-  component: 1.3,
-  store: 1.3,
-  reactive: 1.3,
-  sveltekit: 1.4,
-  routing: 1.4,
-  server: 1.4,
-  load: 1.4,
-  action: 1.4,
-  error: 1.2,
-  warning: 1.2,
-  debug: 1.2,
+	runes: 1.5,
+	$state: 1.5,
+	$derived: 1.5,
+	$effect: 1.5,
+	$props: 1.5,
+	$bindable: 1.5,
+	lifecycle: 1.3,
+	component: 1.3,
+	store: 1.3,
+	reactive: 1.3,
+	sveltekit: 1.4,
+	routing: 1.4,
+	server: 1.4,
+	load: 1.4,
+	action: 1.4,
+	error: 1.2,
+	warning: 1.2,
+	debug: 1.2,
 };
 
 const RELATED_TERMS: Record<string, string[]> = {
-  state: ['$state', 'reactive', 'store', 'writable'],
-  store: ['writable', 'readable', 'derived', 'state', '$state'],
-  props: ['$props', 'component', 'attributes'],
-  effect: ['$effect', 'lifecycle', 'onMount', 'onDestroy'],
-  derived: ['$derived', 'computed', 'store'],
-  route: ['routing', 'navigation', 'params', 'sveltekit'],
-  params: ['routing', 'dynamic', 'url', 'query'],
-  component: ['custom element', 'lifecycle', 'slot'],
-  error: ['debug', 'warning', 'exception', 'handle'],
-  action: ['form', 'submit', 'server', 'mutate'],
-  bind: ['binding', '$bindable', 'two-way'],
-  slot: ['component', 'children', 'content'],
-  rune: ['$state', '$derived', '$effect', '$props'],
+	state: ['$state', 'reactive', 'store', 'writable'],
+	store: ['writable', 'readable', 'derived', 'state', '$state'],
+	props: ['$props', 'component', 'attributes'],
+	effect: ['$effect', 'lifecycle', 'onMount', 'onDestroy'],
+	derived: ['$derived', 'computed', 'store'],
+	route: ['routing', 'navigation', 'params', 'sveltekit'],
+	params: ['routing', 'dynamic', 'url', 'query'],
+	component: ['custom element', 'lifecycle', 'slot'],
+	error: ['debug', 'warning', 'exception', 'handle'],
+	action: ['form', 'submit', 'server', 'mutate'],
+	bind: ['binding', '$bindable', 'two-way'],
+	slot: ['component', 'children', 'content'],
+	rune: ['$state', '$derived', '$effect', '$props'],
 };
 
 export async function search_docs({
-  query,
-  doc_type = 'all',
-  context = 1,
-  include_hierarchy = true,
-  package: pkg,
+	query,
+	doc_type = 'all',
+	context = 1,
+	include_hierarchy = true,
+	package: pkg,
 }: SearchOptions): Promise<{
-  results: SearchResult[];
-  related_suggestions?: RelatedSuggestion[];
+	results: SearchResult[];
+	related_suggestions?: RelatedSuggestion[];
 }> {
-  // 1. Extract exact phrases in quotes, same as before
-  const exact_phrases: string[] = [];
-  const quoted_regex = /"([^"]+)"/g;
-  let match: RegExpExecArray | null;
-  while ((match = quoted_regex.exec(query)) !== null) {
-    exact_phrases.push(match[1].toLowerCase());
-  }
+	// 1. Extract exact phrases in quotes, same as before
+	const exact_phrases: string[] = [];
+	const quoted_regex = /"([^"]+)"/g;
+	let match: RegExpExecArray | null;
+	while ((match = quoted_regex.exec(query)) !== null) {
+		exact_phrases.push(match[1].toLowerCase());
+	}
 
-  // 2. Remove them from the query for standard term analysis
-  let term_query = query.replace(quoted_regex, '');
+	// 2. Remove them from the query for standard term analysis
+	let term_query = query.replace(quoted_regex, '');
 
-  // 3. Split into terms, ignoring short ones
-  const terms = term_query
-    .toLowerCase()
-    .replace(/[^\w\s]/g, ' ')
-    .split(/\s+/)
-    .filter((t) => t.length > 2);
+	// 3. Split into terms, ignoring short ones
+	const terms = term_query
+		.toLowerCase()
+		.replace(/[^\w\s]/g, ' ')
+		.split(/\s+/)
+		.filter((t) => t.length > 2);
 
-  // 4. If no normal terms but some exact phrases, handle as a direct phrase-only search:
-  if (terms.length === 0 && exact_phrases.length > 0) {
-    return await phrase_only_search({
-      phrases: exact_phrases,
-      doc_type,
-      pkg,
-    });
-  }
+	// 4. If no normal terms but some exact phrases, handle as a direct phrase-only search:
+	if (terms.length === 0 && exact_phrases.length > 0) {
+		return await phrase_only_search({
+			phrases: exact_phrases,
+			doc_type,
+			pkg,
+		});
+	}
 
-  // 5. Prepare the dynamic CASE expression for term weights
-  //    We'll build something like:
-  //    CASE si.term
-  //       WHEN 'runes' THEN 1.5
-  //       WHEN 'component' THEN 1.3
-  //       ...
-  //       ELSE 1
-  //    END
-  let caseBlocks: string[] = [];
-  const distinctTerms = Array.from(new Set(terms)); // deduplicate
-  for (const t of distinctTerms) {
-    const w = TERM_WEIGHTS[t] || 1.0;
-    // We'll use placeholders, or inline if you trust your input sanitization
-    // In SQLite, string placeholders have to be used carefully in CASE. 
-    // Simpler to inline or build with a library that escapes properly.
-    caseBlocks.push(`WHEN si.term = '${t}' THEN ${w}`);
-  }
-  const caseExpression = `CASE ${caseBlocks.join(' ')} ELSE 1 END`;
+	// 5. Prepare the dynamic CASE expression for term weights
+	//    We'll build something like:
+	//    CASE si.term
+	//       WHEN 'runes' THEN 1.5
+	//       WHEN 'component' THEN 1.3
+	//       ...
+	//       ELSE 1
+	//    END
+	let caseBlocks: string[] = [];
+	const distinctTerms = Array.from(new Set(terms)); // deduplicate
+	for (const t of distinctTerms) {
+		const w = TERM_WEIGHTS[t] || 1.0;
+		// We'll use placeholders, or inline if you trust your input sanitization
+		// In SQLite, string placeholders have to be used carefully in CASE.
+		// Simpler to inline or build with a library that escapes properly.
+		caseBlocks.push(`WHEN si.term = '${t}' THEN ${w}`);
+	}
+	const caseExpression = `CASE ${caseBlocks.join(' ')} ELSE 1 END`;
 
-  // 6. Build the main SQL
-  //    We do one JOIN from docs -> search_index
-  //    We match any row that has si.term in our distinctTerms set
-  //    Also filter doc_type and package if provided
-  //    For exact_phrases, we do AND d.content LIKE ... for each
-  //    Summation is the sum of frequencies, plus the per-term weighting from the CASE expression
-  //    If you want “AND” logic (require all terms), we do a HAVING count(DISTINCT si.term) = distinctTerms.length
-  //    If you want “OR” logic, remove that HAVING line.
-  let sql = `
+	// 6. Build the main SQL
+	//    We do one JOIN from docs -> search_index
+	//    We match any row that has si.term in our distinctTerms set
+	//    Also filter doc_type and package if provided
+	//    For exact_phrases, we do AND d.content LIKE ... for each
+	//    Summation is the sum of frequencies, plus the per-term weighting from the CASE expression
+	//    If you want “AND” logic (require all terms), we do a HAVING count(DISTINCT si.term) = distinctTerms.length
+	//    If you want “OR” logic, remove that HAVING line.
+	let sql = `
     SELECT
       d.id,
       d.content,
@@ -136,82 +136,86 @@ export async function search_docs({
     JOIN search_index si ON d.id = si.doc_id
     WHERE 1=1
   `;
-  const args: any[] = [];
+	const args: any[] = [];
 
-  // 7. si.term IN (...)
-  if (distinctTerms.length > 0) {
-    const placeholders = distinctTerms.map(() => '?').join(',');
-    sql += ` AND si.term IN (${placeholders}) `;
-    args.push(...distinctTerms);
-  }
+	// 7. si.term IN (...)
+	if (distinctTerms.length > 0) {
+		const placeholders = distinctTerms.map(() => '?').join(',');
+		sql += ` AND si.term IN (${placeholders}) `;
+		args.push(...distinctTerms);
+	}
 
-  // 8. Add phrase filters
-  for (const phrase of exact_phrases) {
-    sql += ' AND LOWER(d.content) LIKE ?';
-    args.push(`%${phrase}%`);
-  }
+	// 8. Add phrase filters
+	for (const phrase of exact_phrases) {
+		sql += ' AND LOWER(d.content) LIKE ?';
+		args.push(`%${phrase}%`);
+	}
 
-  // 9. doc_type filter
-  if (doc_type !== 'all') {
-    sql += ' AND d.type = ?';
-    args.push(doc_type);
-  }
+	// 9. doc_type filter
+	if (doc_type !== 'all') {
+		sql += ' AND d.type = ?';
+		args.push(doc_type);
+	}
 
-  // 10. package filter
-  if (pkg) {
-    sql += ' AND d.package = ?';
-    args.push(pkg);
-  }
+	// 10. package filter
+	if (pkg) {
+		sql += ' AND d.package = ?';
+		args.push(pkg);
+	}
 
-  // 11. Group & Having
-  //     If you want “OR” logic, omit the HAVING.
-  //     If you want “AND” logic (require all distinctTerms), do:
-  sql += `
+	// 11. Group & Having
+	//     If you want “OR” logic, omit the HAVING.
+	//     If you want “AND” logic (require all distinctTerms), do:
+	sql += `
     GROUP BY d.id, d.content, d.type, d.package, d.hierarchy
     HAVING COUNT(DISTINCT si.term) = ${distinctTerms.length}
     ORDER BY total_score DESC
     LIMIT 10
   `;
 
-  // 12. Execute
-  const results = await db.execute({ sql, args });
-  const search_results: SearchResult[] = results.rows.map((row: any) => ({
-    content: row.content,
-    type: row.type as DocType,
-    package: row.package as Package,
-    hierarchy: row.hierarchy ? JSON.parse(row.hierarchy) : undefined,
-    relevance_score: row.total_score,
-    category: determine_category(row.content),
-  }));
+	// 12. Execute
+	const results = await db.execute({ sql, args });
+	const search_results: SearchResult[] = results.rows.map(
+		(row: any) => ({
+			content: row.content,
+			type: row.type as DocType,
+			package: row.package as Package,
+			hierarchy: row.hierarchy
+				? JSON.parse(row.hierarchy)
+				: undefined,
+			relevance_score: row.total_score,
+			category: determine_category(row.content),
+		}),
+	);
 
-  // 13. Group results by category (same as your original code)
-  const grouped = group_by_category(search_results);
+	// 13. Group results by category (same as your original code)
+	const grouped = group_by_category(search_results);
 
-  // 14. Generate related suggestions
-  const related_suggestions = generate_related_suggestions(terms);
+	// 14. Generate related suggestions
+	const related_suggestions = generate_related_suggestions(terms);
 
-  return {
-    results: flatten_grouped_results(grouped),
-    related_suggestions: related_suggestions.length
-      ? related_suggestions
-      : undefined,
-  };
+	return {
+		results: flatten_grouped_results(grouped),
+		related_suggestions: related_suggestions.length
+			? related_suggestions
+			: undefined,
+	};
 }
 
-/** 
- * If the user only gave us exact phrases (and no normal terms), 
+/**
+ * If the user only gave us exact phrases (and no normal terms),
  * we can do a separate direct search by phrases only.
  */
 async function phrase_only_search({
-  phrases,
-  doc_type,
-  pkg,
+	phrases,
+	doc_type,
+	pkg,
 }: {
-  phrases: string[];
-  doc_type?: DocType | 'all';
-  pkg?: Package;
+	phrases: string[];
+	doc_type?: DocType | 'all';
+	pkg?: Package;
 }) {
-  let sql = `
+	let sql = `
     SELECT 
       d.id,
       d.content,
@@ -222,125 +226,145 @@ async function phrase_only_search({
     FROM docs d
     WHERE 1=1
   `;
-  const args: any[] = [];
+	const args: any[] = [];
 
-  // Add phrase conditions
-  for (const phrase of phrases) {
-    sql += ' AND LOWER(d.content) LIKE ?';
-    args.push(`%${phrase}%`);
-  }
+	// Add phrase conditions
+	for (const phrase of phrases) {
+		sql += ' AND LOWER(d.content) LIKE ?';
+		args.push(`%${phrase}%`);
+	}
 
-  if (doc_type && doc_type !== 'all') {
-    sql += ' AND d.type = ?';
-    args.push(doc_type);
-  }
-  if (pkg) {
-    sql += ' AND d.package = ?';
-    args.push(pkg);
-  }
+	if (doc_type && doc_type !== 'all') {
+		sql += ' AND d.type = ?';
+		args.push(doc_type);
+	}
+	if (pkg) {
+		sql += ' AND d.package = ?';
+		args.push(pkg);
+	}
 
-  sql += ' LIMIT 10';
+	sql += ' LIMIT 10';
 
-  const results = await db.execute({ sql, args });
-  const search_results = results.rows.map((row: any) => ({
-    content: row.content,
-    type: row.type as DocType,
-    package: row.package as Package,
-    hierarchy: row.hierarchy ? JSON.parse(row.hierarchy) : undefined,
-    relevance_score: 1.0,
-    category: determine_category(row.content),
-  }));
+	const results = await db.execute({ sql, args });
+	const search_results = results.rows.map((row: any) => ({
+		content: row.content,
+		type: row.type as DocType,
+		package: row.package as Package,
+		hierarchy: row.hierarchy ? JSON.parse(row.hierarchy) : undefined,
+		relevance_score: 1.0,
+		category: determine_category(row.content),
+	}));
 
-  // Group, flatten, etc.
-  const grouped = group_by_category(search_results);
-  const related_suggestions = generate_related_suggestions(
-    phrases.flatMap((p) => p.split(/\s+/)), // naive split for suggestions
-  );
+	// Group, flatten, etc.
+	const grouped = group_by_category(search_results);
+	const related_suggestions = generate_related_suggestions(
+		phrases.flatMap((p) => p.split(/\s+/)), // naive split for suggestions
+	);
 
-  return {
-    results: flatten_grouped_results(grouped),
-    related_suggestions: related_suggestions.length
-      ? related_suggestions
-      : undefined,
-  };
+	return {
+		results: flatten_grouped_results(grouped),
+		related_suggestions: related_suggestions.length
+			? related_suggestions
+			: undefined,
+	};
 }
 
 /** Same as in your original code */
-function determine_category(content: string): SearchResult['category'] {
-  const lower = content.toLowerCase();
-  if (
-    lower.includes('rune') ||
-    lower.includes('$state') ||
-    lower.includes('$effect')
-  ) {
-    return 'runes';
-  }
-  if (lower.includes('component') || lower.includes('lifecycle')) {
-    return 'components';
-  }
-  if (
-    lower.includes('route') ||
-    lower.includes('navigation') ||
-    lower.includes('sveltekit')
-  ) {
-    return 'routing';
-  }
-  if (lower.includes('error') || lower.includes('warning') || lower.includes('debug')) {
-    return 'error';
-  }
-  return undefined;
+function determine_category(
+	content: string,
+): SearchResult['category'] {
+	const lower = content.toLowerCase();
+	if (
+		lower.includes('rune') ||
+		lower.includes('$state') ||
+		lower.includes('$effect')
+	) {
+		return 'runes';
+	}
+	if (lower.includes('component') || lower.includes('lifecycle')) {
+		return 'components';
+	}
+	if (
+		lower.includes('route') ||
+		lower.includes('navigation') ||
+		lower.includes('sveltekit')
+	) {
+		return 'routing';
+	}
+	if (
+		lower.includes('error') ||
+		lower.includes('warning') ||
+		lower.includes('debug')
+	) {
+		return 'error';
+	}
+	return undefined;
 }
 
 /** Same as in your original code */
-function generate_related_suggestions(terms: string[]): RelatedSuggestion[] {
-  const suggestions: RelatedSuggestion[] = [];
-  const seen = new Set<string>();
+function generate_related_suggestions(
+	terms: string[],
+): RelatedSuggestion[] {
+	const suggestions: RelatedSuggestion[] = [];
+	const seen = new Set<string>();
 
-  for (const term of terms) {
-    if (term.length <= 2) continue;
-    const related = RELATED_TERMS[term] || [];
-    for (const r of related) {
-      if (!terms.includes(r) && !seen.has(r)) {
-        seen.add(r);
-        suggestions.push({
-          term: r,
-          relevance: TERM_WEIGHTS[r] || 1.0,
-        });
-      }
-    }
+	for (const term of terms) {
+		if (term.length <= 2) continue;
+		const related = RELATED_TERMS[term] || [];
+		for (const r of related) {
+			if (!terms.includes(r) && !seen.has(r)) {
+				seen.add(r);
+				suggestions.push({
+					term: r,
+					relevance: TERM_WEIGHTS[r] || 1.0,
+				});
+			}
+		}
 
-    // Optional partial-matching logic from your code ...
-    for (const key of Object.keys(RELATED_TERMS)) {
-      if ((key.includes(term) || term.includes(key)) && key !== term) {
-        for (const rt of RELATED_TERMS[key]) {
-          if (!terms.includes(rt) && !seen.has(rt)) {
-            seen.add(rt);
-            suggestions.push({
-              term: rt,
-              relevance: (TERM_WEIGHTS[rt] || 1.0) * 0.8,
-            });
-          }
-        }
-      }
-    }
-  }
+		// Optional partial-matching logic from your code ...
+		for (const key of Object.keys(RELATED_TERMS)) {
+			if (
+				(key.includes(term) || term.includes(key)) &&
+				key !== term
+			) {
+				for (const rt of RELATED_TERMS[key]) {
+					if (!terms.includes(rt) && !seen.has(rt)) {
+						seen.add(rt);
+						suggestions.push({
+							term: rt,
+							relevance: (TERM_WEIGHTS[rt] || 1.0) * 0.8,
+						});
+					}
+				}
+			}
+		}
+	}
 
-  return suggestions.sort((a, b) => b.relevance - a.relevance).slice(0, 5);
+	return suggestions
+		.sort((a, b) => b.relevance - a.relevance)
+		.slice(0, 5);
 }
 
 /** Same as in your original code */
-function group_by_category(results: SearchResult[]): Record<string, SearchResult[]> {
-  return results.reduce((acc, r) => {
-    const cat = r.category || 'other';
-    if (!acc[cat]) acc[cat] = [];
-    acc[cat].push(r);
-    return acc;
-  }, {} as Record<string, SearchResult[]>);
+function group_by_category(
+	results: SearchResult[],
+): Record<string, SearchResult[]> {
+	return results.reduce(
+		(acc, r) => {
+			const cat = r.category || 'other';
+			if (!acc[cat]) acc[cat] = [];
+			acc[cat].push(r);
+			return acc;
+		},
+		{} as Record<string, SearchResult[]>,
+	);
 }
 
 /** Same as in your original code */
-function flatten_grouped_results(grouped: Record<string, SearchResult[]>): SearchResult[] {
-  return Object.values(grouped)
-    .flat()
-    .sort((a, b) => b.relevance_score - a.relevance_score);
+function flatten_grouped_results(
+	grouped: Record<string, SearchResult[]>,
+): SearchResult[] {
+	return Object.values(grouped)
+		.flat()
+		.sort((a, b) => b.relevance_score - a.relevance_score);
 }

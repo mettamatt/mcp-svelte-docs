@@ -4,9 +4,11 @@
 
 ### Patch Changes
 
-- feat: Add automatic detection of Svelte-related queries across MCP tools
+- feat: Add automatic detection of Svelte-related queries across MCP
+  tools
 - feat: Implement smart keyword detection with context-aware filtering
-- feat: Add proactive responses for Svelte-related queries in other tools
+- feat: Add proactive responses for Svelte-related queries in other
+  tools
 - test: Add comprehensive test suite for Svelte keyword detection
 
 ## 0.0.15

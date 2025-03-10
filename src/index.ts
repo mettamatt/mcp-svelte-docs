@@ -133,163 +133,185 @@ import { TERM_WEIGHTS } from './search/index.js';
 
 // Define the keywords that should have additional context to trigger Svelte docs
 // These are more generic terms that need to be paired with another Svelte term
-const CONTEXT_REQUIRED_TERMS = new Set(['error', 'warning', 'debug', 'store', 'load', 'action']);
+const CONTEXT_REQUIRED_TERMS = new Set([
+	'error',
+	'warning',
+	'debug',
+	'store',
+	'load',
+	'action',
+]);
 
 // Additional strong Svelte indicators not in TERM_WEIGHTS
-const ADDITIONAL_SVELTE_TERMS = new Set(['svelte', 'sveltekit', 'svelte.js', 'runes', 'state']);
+const ADDITIONAL_SVELTE_TERMS = new Set([
+	'svelte',
+	'sveltekit',
+	'svelte.js',
+	'runes',
+	'state',
+]);
 
 // Helper to detect if a query might be Svelte-related
 function isSvelteQuery(query: string): boolean {
-    const lowercaseQuery = query.toLowerCase();
-    
-    // Check for strong indicators first
-    for (const term of ADDITIONAL_SVELTE_TERMS) {
-        if (lowercaseQuery.includes(term)) {
-            return true;
-        }
-    }
-    
-    // Check for weighted terms from the existing system
-    const queryTerms = lowercaseQuery.split(/\s+/);
-    
-    // Count direct term matches
-    let svelteTermMatches = 0;
-    
-    for (const term of queryTerms) {
-        if (term.length < 3) continue;
-        
-        // If we have a direct match with a TERM_WEIGHTS key
-        if (term in TERM_WEIGHTS) {
-            // If this is a term requiring context, we need to look for another match
-            if (CONTEXT_REQUIRED_TERMS.has(term)) {
-                continue; // Skip counting this as a direct match
-            }
-            
-            svelteTermMatches++;
-            if (svelteTermMatches >= 1) {
-                return true;
-            }
-        }
-    }
-    
-    // If we have a context-requiring term, check if there's at least one more Svelte term
-    if (queryTerms.some((term: string) => CONTEXT_REQUIRED_TERMS.has(term))) {
-        for (const term of queryTerms) {
-            // Must be at least one other Svelte term 
-            if (term in TERM_WEIGHTS && !CONTEXT_REQUIRED_TERMS.has(term)) {
-                return true;
-            }
-        }
-    }
-    
-    return false;
+	const lowercaseQuery = query.toLowerCase();
+
+	// Check for strong indicators first
+	for (const term of ADDITIONAL_SVELTE_TERMS) {
+		if (lowercaseQuery.includes(term)) {
+			return true;
+		}
+	}
+
+	// Check for weighted terms from the existing system
+	const queryTerms = lowercaseQuery.split(/\s+/);
+
+	// Count direct term matches
+	let svelteTermMatches = 0;
+
+	for (const term of queryTerms) {
+		if (term.length < 3) continue;
+
+		// If we have a direct match with a TERM_WEIGHTS key
+		if (term in TERM_WEIGHTS) {
+			// If this is a term requiring context, we need to look for another match
+			if (CONTEXT_REQUIRED_TERMS.has(term)) {
+				continue; // Skip counting this as a direct match
+			}
+
+			svelteTermMatches++;
+			if (svelteTermMatches >= 1) {
+				return true;
+			}
+		}
+	}
+
+	// If we have a context-requiring term, check if there's at least one more Svelte term
+	if (
+		queryTerms.some((term: string) =>
+			CONTEXT_REQUIRED_TERMS.has(term),
+		)
+	) {
+		for (const term of queryTerms) {
+			// Must be at least one other Svelte term
+			if (term in TERM_WEIGHTS && !CONTEXT_REQUIRED_TERMS.has(term)) {
+				return true;
+			}
+		}
+	}
+
+	return false;
 }
 
 server.setRequestHandler(CallToolRequestSchema, async (request) => {
-    const { name: toolName, arguments: toolArgs } = request.params;
+	const { name: toolName, arguments: toolArgs } = request.params;
 
-    // Basic guard
-    if (!toolArgs) {
-        return {
-            content: [
-                { type: 'text', text: 'No tool arguments provided.' },
-            ],
-            isError: true,
-        };
-    }
+	// Basic guard
+	if (!toolArgs) {
+		return {
+			content: [
+				{ type: 'text', text: 'No tool arguments provided.' },
+			],
+			isError: true,
+		};
+	}
 
-    try {
-        // Auto-detect Svelte queries even when another tool is called
-        if (toolName !== 'svelte_search_docs' && 
-            'query' in toolArgs && 
-            typeof toolArgs.query === 'string' && 
-            isSvelteQuery(toolArgs.query)) {
-            
-            console.error(`Detected Svelte-related query in ${toolName}: ${toolArgs.query}`);
-            
-            // We'll still perform the original request, but we'll also search Svelte docs
-            const svelteResults = await search_docs({
-                query: toolArgs.query,
-                doc_type: 'all',
-                context: 1,
-                include_hierarchy: true
-            });
-            
-            if (svelteResults.results.length > 0) {
-                console.error(`Found ${svelteResults.results.length} Svelte doc results for: ${toolArgs.query}`);
-                
-                // Add Svelte documentation to the response
-                // We'll inform the caller that there are Svelte docs available via the svelte_search_docs tool
-                return {
-                    content: [
-                        { 
-                            type: 'text', 
-                            text: `This query appears to be related to Svelte. For more detailed information, you can use the 'svelte_search_docs' tool with the query: "${toolArgs.query}"\n\nFound ${svelteResults.results.length} relevant Svelte documentation entries.`
-                        }
-                    ]
-                };
-            }
-        }
+	try {
+		// Auto-detect Svelte queries even when another tool is called
+		if (
+			toolName !== 'svelte_search_docs' &&
+			'query' in toolArgs &&
+			typeof toolArgs.query === 'string' &&
+			isSvelteQuery(toolArgs.query)
+		) {
+			console.error(
+				`Detected Svelte-related query in ${toolName}: ${toolArgs.query}`,
+			);
 
-        switch (toolName) {
-            // ~~~~~~~~~~~~~
-            // svelte_search_docs
-            // ~~~~~~~~~~~~~
-            case 'svelte_search_docs': {
-                // Validate with Zod for safety
-                const schema = z.object({
-                    query: z.string(),
-                    doc_type: z
-                        .enum(['api', 'tutorial', 'example', 'error', 'all'])
-                        .default('all'),
-                    context: z.number().min(0).max(3).default(1),
-                    include_hierarchy: z.boolean().default(true),
-                    package: z.enum(['svelte', 'kit', 'cli']).optional(),
-                });
-                const args = schema.parse(toolArgs);
+			// We'll still perform the original request, but we'll also search Svelte docs
+			const svelteResults = await search_docs({
+				query: toolArgs.query,
+				doc_type: 'all',
+				context: 1,
+				include_hierarchy: true,
+			});
 
-                const { results, related_suggestions } = await search_docs({
-                    query: args.query,
-                    doc_type: args.doc_type,
-                    context: args.context,
-                    include_hierarchy: args.include_hierarchy,
-                    package: args.package,
-                });
+			if (svelteResults.results.length > 0) {
+				console.error(
+					`Found ${svelteResults.results.length} Svelte doc results for: ${toolArgs.query}`,
+				);
 
-                if (results.length === 0) {
-                    let notFound = `No results found for your query: "${args.query}"`;
-                    if (related_suggestions?.length) {
-                        notFound += '\n\nRelated terms:\n';
-                        related_suggestions.forEach((s) => {
-                            notFound += `- ${s.term}\n`;
-                        });
-                    }
-                    return { content: [{ type: 'text', text: notFound }] };
-                }
+				// Add Svelte documentation to the response
+				// We'll inform the caller that there are Svelte docs available via the svelte_search_docs tool
+				return {
+					content: [
+						{
+							type: 'text',
+							text: `This query appears to be related to Svelte. For more detailed information, you can use the 'svelte_search_docs' tool with the query: "${toolArgs.query}"\n\nFound ${svelteResults.results.length} relevant Svelte documentation entries.`,
+						},
+					],
+				};
+			}
+		}
 
-                // Format
-                let response = 'SEARCH RESULTS:\n\n';
-                results.forEach((r, idx) => {
-                    response += `[${idx + 1}] `;
-                    if (r.hierarchy && args.include_hierarchy) {
-                        response += `${r.hierarchy.join(' > ')}\n`;
-                    }
-                    response += `Type: ${r.type} | Package: ${r.package || 'core'}\n`;
-                    const cleaned = r.content
-                        .replace(/```[a-z]*\n/g, '')
-                        .replace(/```$/g, '');
-                    response += `${cleaned}\n------------------------\n\n`;
-                });
+		switch (toolName) {
+			// ~~~~~~~~~~~~~
+			// svelte_search_docs
+			// ~~~~~~~~~~~~~
+			case 'svelte_search_docs': {
+				// Validate with Zod for safety
+				const schema = z.object({
+					query: z.string(),
+					doc_type: z
+						.enum(['api', 'tutorial', 'example', 'error', 'all'])
+						.default('all'),
+					context: z.number().min(0).max(3).default(1),
+					include_hierarchy: z.boolean().default(true),
+					package: z.enum(['svelte', 'kit', 'cli']).optional(),
+				});
+				const args = schema.parse(toolArgs);
 
-                if (related_suggestions?.length) {
-                    response += 'RELATED TOPICS:\n';
-                    related_suggestions.forEach((s) => {
-                        response += `- ${s.term}\n`;
-                    });
-                }
+				const { results, related_suggestions } = await search_docs({
+					query: args.query,
+					doc_type: args.doc_type,
+					context: args.context,
+					include_hierarchy: args.include_hierarchy,
+					package: args.package,
+				});
 
-                return { content: [{ type: 'text', text: response }] };
-            }
+				if (results.length === 0) {
+					let notFound = `No results found for your query: "${args.query}"`;
+					if (related_suggestions?.length) {
+						notFound += '\n\nRelated terms:\n';
+						related_suggestions.forEach((s) => {
+							notFound += `- ${s.term}\n`;
+						});
+					}
+					return { content: [{ type: 'text', text: notFound }] };
+				}
+
+				// Format
+				let response = 'SEARCH RESULTS:\n\n';
+				results.forEach((r, idx) => {
+					response += `[${idx + 1}] `;
+					if (r.hierarchy && args.include_hierarchy) {
+						response += `${r.hierarchy.join(' > ')}\n`;
+					}
+					response += `Type: ${r.type} | Package: ${r.package || 'core'}\n`;
+					const cleaned = r.content
+						.replace(/```[a-z]*\n/g, '')
+						.replace(/```$/g, '');
+					response += `${cleaned}\n------------------------\n\n`;
+				});
+
+				if (related_suggestions?.length) {
+					response += 'RELATED TOPICS:\n';
+					related_suggestions.forEach((s) => {
+						response += `- ${s.term}\n`;
+					});
+				}
+
+				return { content: [{ type: 'text', text: response }] };
+			}
 
 			// ~~~~~~~~~~~~~
 			// svelte_get_next_chunk
@@ -405,75 +427,81 @@ server.setRequestHandler(ListResourcesRequestSchema, async () => {
 	return await get_doc_resources();
 });
 
-server.setRequestHandler(ReadResourceRequestSchema, async (request) => {
-	const { uri } = request.params;
+server.setRequestHandler(
+	ReadResourceRequestSchema,
+	async (request) => {
+		const { uri } = request.params;
 
-	if (!uri.startsWith('svelte-docs://docs/')) {
-		return {
-			contents: [],
-			isError: true,
-			error: `Unrecognized URI: ${uri}`,
-		};
-	}
+		if (!uri.startsWith('svelte-docs://docs/')) {
+			return {
+				contents: [],
+				isError: true,
+				error: `Unrecognized URI: ${uri}`,
+			};
+		}
 
-	// Determine if it’s a package or a variant
-	const path = uri.replace('svelte-docs://docs/', '');
-	let package_name: Package | null = null;
-	let variant: DocVariant | null = null;
+		// Determine if it’s a package or a variant
+		const path = uri.replace('svelte-docs://docs/', '');
+		let package_name: Package | null = null;
+		let variant: DocVariant | null = null;
 
-	if (
-		path.startsWith('svelte/') ||
-		path.startsWith('kit/') ||
-		path.startsWith('cli/')
-	) {
-		const [pkg] = path.split('/');
-		package_name = pkg as Package;
-	} else {
-		const variant_map: Record<string, DocVariant> = {
-			'llms.txt': 'llms',
-			'llms-full.txt': 'llms-full',
-			'llms-small.txt': 'llms-small',
-		};
-		variant = variant_map[path] ?? null;
-	}
+		if (
+			path.startsWith('svelte/') ||
+			path.startsWith('kit/') ||
+			path.startsWith('cli/')
+		) {
+			const [pkg] = path.split('/');
+			package_name = pkg as Package;
+		} else {
+			const variant_map: Record<string, DocVariant> = {
+				'llms.txt': 'llms',
+				'llms-full.txt': 'llms-full',
+				'llms-small.txt': 'llms-small',
+			};
+			variant = variant_map[path] ?? null;
+		}
 
-	// Update if needed
-	if (
-		await should_update_docs(
-			package_name ?? undefined,
-			variant ?? undefined,
-		)
-	) {
-		await fetch_docs(package_name ?? undefined, variant ?? undefined);
-	}
+		// Update if needed
+		if (
+			await should_update_docs(
+				package_name ?? undefined,
+				variant ?? undefined,
+			)
+		) {
+			await fetch_docs(
+				package_name ?? undefined,
+				variant ?? undefined,
+			);
+		}
 
-	// Grab the doc from the DB
-	const result = await db.execute({
-		sql: `SELECT content FROM docs
+		// Grab the doc from the DB
+		const result = await db.execute({
+			sql: `SELECT content FROM docs
           WHERE (package = ? OR package IS NULL)
             AND (variant = ? OR variant IS NULL)
           LIMIT 1`,
-		args: [package_name, variant],
-	});
+			args: [package_name, variant],
+		});
 
-	if (result.rows.length === 0) {
-		return {
-			contents: [],
-			isError: true,
-			error: `Documentation not found for URI: ${uri}`,
+		if (result.rows.length === 0) {
+			return {
+				contents: [],
+				isError: true,
+				error: `Documentation not found for URI: ${uri}`,
+			};
+		}
+
+		const docText = String(result.rows[0].content);
+
+		const resourceContent: ResourceContents = {
+			uri,
+			text: docText,
+			mimeType: 'text/plain',
 		};
-	}
 
-	const docText = String(result.rows[0].content);
-
-	const resourceContent: ResourceContents = {
-		uri,
-		text: docText,
-		mimeType: 'text/plain',
-	};
-
-	return { contents: [resourceContent] };
-});
+		return { contents: [resourceContent] };
+	},
+);
 
 // ------------------------------------------------------------
 // 6) Server Startup & Graceful Shutdown

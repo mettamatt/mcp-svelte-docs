@@ -28,7 +28,8 @@ variants suitable for different LLM context window sizes.
 - 🔎 Automatic Svelte query detection:
   - Recognizes Svelte-related terms across all MCP tools
   - Context-aware keyword detection
-  - Detects Svelte runes, components, lifecycle, and other key concepts
+  - Detects Svelte runes, components, lifecycle, and other key
+    concepts
   - Proactively suggests Svelte documentation when relevant
 - 💾 Efficient caching with LibSQL
 - 🔄 Automatic content freshness checks
