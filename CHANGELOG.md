@@ -1,12 +1,23 @@
 # mcp-svelte-docs
 
+## 0.0.16
+
+### Patch Changes
+
+- feat: Add automatic detection of Svelte-related queries across MCP tools
+- feat: Implement smart keyword detection with context-aware filtering
+- feat: Add proactive responses for Svelte-related queries in other tools
+- test: Add comprehensive test suite for Svelte keyword detection
+
 ## 0.0.15
 
 ### Patch Changes
 
 - fix: Improve exact phrase matching for quoted search terms
-- fix: Ensure phrase-only searches return proper results even without keyword matches
-- refactor: Extract common search result handling into helper functions
+- fix: Ensure phrase-only searches return proper results even without
+  keyword matches
+- refactor: Extract common search result handling into helper
+  functions
 - chore: Code formatting with Prettier
 
 ## 0.0.14

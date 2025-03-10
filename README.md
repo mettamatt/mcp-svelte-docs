@@ -25,6 +25,11 @@ variants suitable for different LLM context window sizes.
   - Category-based result grouping
   - Exact phrase matching with quotes
   - Related term suggestions
+- 🔎 Automatic Svelte query detection:
+  - Recognizes Svelte-related terms across all MCP tools
+  - Context-aware keyword detection
+  - Detects Svelte runes, components, lifecycle, and other key concepts
+  - Proactively suggests Svelte documentation when relevant
 - 💾 Efficient caching with LibSQL
 - 🔄 Automatic content freshness checks
 - 📦 Support for package-specific documentation (Svelte, Kit, CLI)
@@ -56,7 +61,9 @@ Add this to your Cline MCP settings:
 }
 ```
 
-> **Note:** The server runs over standard I/O transport, not HTTP. It doesn't require any open ports for normal operation. The MCP Inspector debug mode is only used during development.
+> **Note:** The server runs over standard I/O transport, not HTTP. It
+> doesn't require any open ports for normal operation. The MCP
+> Inspector debug mode is only used during development.
 
 ### Claude Desktop with WSL Configuration
 
@@ -185,7 +192,10 @@ pnpm dev -- --mcp-debug
 pnpm start
 ```
 
-> **Note:** The MCP Inspector debug UI runs on port 5173 with a proxy server on port 3000. These ports must be available. The debug UI is only needed for development and troubleshooting - it's not required for normal operation.
+> **Note:** The MCP Inspector debug UI runs on port 5173 with a proxy
+> server on port 3000. These ports must be available. The debug UI is
+> only needed for development and troubleshooting - it's not required
+> for normal operation.
 
 ### Publishing
 
