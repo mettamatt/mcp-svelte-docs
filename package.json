@@ -19,6 +19,9 @@
 		"dev": "npx @modelcontextprotocol/inspector dist/index.js",
 		"format": "prettier --write .",
 		"format:check": "prettier --check .",
+		"test:keywords": "node test-keyword-detection.js",
+		"test:search": "node debug-search.js",
+		"test": "npm run test:keywords && npm run test:search",
 		"changeset": "changeset",
 		"version": "changeset version",
 		"release": "pnpm run build && changeset publish"

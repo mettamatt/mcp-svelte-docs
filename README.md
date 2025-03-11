@@ -62,6 +62,22 @@ Add this to your Cline MCP settings:
 }
 ```
 
+With refresh option:
+
+```json
+{
+	"mcpServers": {
+		"svelte-docs": {
+			"command": "npx",
+			"args": ["-y", "mcp-svelte-docs", "--refresh=WEEKLY"],
+			"env": {
+				"LIBSQL_URL": "file:local.db"
+			}
+		}
+	}
+}
+```
+
 > **Note:** The server runs over standard I/O transport, not HTTP. It
 > doesn't require any open ports for normal operation. The MCP
 > Inspector debug mode is only used during development.
@@ -85,6 +101,23 @@ For WSL environments, add this to your Claude Desktop configuration:
 }
 ```
 
+With refresh option:
+
+```json
+{
+	"mcpServers": {
+		"svelte-docs": {
+			"command": "wsl.exe",
+			"args": [
+				"bash",
+				"-c",
+				"LIBSQL_URL=file:local.db npx -y mcp-svelte-docs --refresh=WEEKLY"
+			]
+		}
+	}
+}
+```
+
 ### Environment Variables
 
 The server supports the following environment variables:
@@ -93,6 +126,31 @@ The server supports the following environment variables:
   `file:local.db`
 - `LIBSQL_AUTH_TOKEN` (optional): Auth token for remote LibSQL
   database
+
+### Command Line Options
+
+The server supports the following command line options:
+
+- `--refresh` or `--refresh=DAILY`: Force refresh of documentation on
+  startup and set daily refresh interval
+- `--refresh=WEEKLY`: Force refresh of documentation on startup and
+  set weekly refresh interval
+
+Example with refresh option:
+
+```json
+{
+	"mcpServers": {
+		"svelte-docs": {
+			"command": "npx",
+			"args": ["-y", "mcp-svelte-docs", "--refresh=WEEKLY"],
+			"env": {
+				"LIBSQL_URL": "file:local.db"
+			}
+		}
+	}
+}
+```
 
 ## API
 

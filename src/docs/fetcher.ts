@@ -16,7 +16,28 @@ const PACKAGE_DOCS = {
 	cli: `${BASE_URL}/docs/cli/llms.txt`,
 };
 
-const UPDATE_INTERVAL = 24 * 60 * 60 * 1000; // 24 hours
+// Default update interval (24 hours)
+const DAILY_UPDATE_INTERVAL = 24 * 60 * 60 * 1000; // 24 hours
+const WEEKLY_UPDATE_INTERVAL = 7 * 24 * 60 * 60 * 1000; // 7 days
+
+// Default to daily updates
+let UPDATE_INTERVAL = DAILY_UPDATE_INTERVAL;
+let REFRESH_MODE: 'DAILY' | 'WEEKLY' = 'DAILY';
+
+/**
+ * Set the refresh mode for documentation updates
+ * @param mode 'DAILY' or 'WEEKLY'
+ */
+export const setRefreshMode = (mode: 'DAILY' | 'WEEKLY') => {
+	REFRESH_MODE = mode;
+	UPDATE_INTERVAL =
+		mode === 'WEEKLY'
+			? WEEKLY_UPDATE_INTERVAL
+			: DAILY_UPDATE_INTERVAL;
+	console.error(
+		`Documentation refresh interval set to ${mode} (${UPDATE_INTERVAL / (1000 * 60 * 60)} hours)`,
+	);
+};
 
 export type DocType = 'api' | 'tutorial' | 'example' | 'error';
 export type Package = 'svelte' | 'kit' | 'cli';
@@ -33,12 +54,26 @@ interface DocMetadata {
 export const init_docs = async () => {
 	console.error('Starting docs initialization...');
 	try {
-		// Clear existing data
+		// Check if docs already exist
+		const docCount = await db.execute(
+			'SELECT COUNT(*) as count FROM docs',
+		);
+		const count = Number(docCount.rows[0].count);
+		if (count > 0) {
+			console.error(
+				`Found ${count} existing documents, skipping initial fetch`,
+			);
+			return;
+		}
+
+		// If no docs exist, fetch them
+		console.error('No existing docs found, initializing...');
+
+		// Clear any partial data
 		await db.execute('DELETE FROM search_index');
 		await db.execute('DELETE FROM docs');
-		console.error('Cleared existing documentation');
 
-		// Package docs are required
+		// Package docs are required - fetch them concurrently for speed
 		const package_results = await Promise.all(
 			Object.keys(PACKAGE_DOCS).map((pkg) =>
 				fetch_docs(pkg as Package),
@@ -293,10 +328,26 @@ const process_docs = async (
 	}
 };
 
+/**
+ * Check if documentation should be updated based on the refresh mode
+ * @param package_name Optional package name to check
+ * @param variant Optional doc variant to check
+ * @param forceRefresh Force refresh regardless of last update time
+ * @returns True if docs should be updated, false otherwise
+ */
 export const should_update_docs = async (
 	package_name?: Package,
 	variant?: DocVariant,
+	forceRefresh: boolean = false,
 ): Promise<boolean> => {
+	// If force refresh is requested, skip time check
+	if (forceRefresh) {
+		console.error(
+			`Forced refresh requested for ${package_name || variant || 'all'} docs`,
+		);
+		return true;
+	}
+
 	const result = await db.execute({
 		sql: `SELECT last_updated FROM docs 
           WHERE (package = ? OR package IS NULL) 
@@ -311,7 +362,16 @@ export const should_update_docs = async (
 	const last_updated = new Date(
 		result.rows[0].last_updated as string,
 	);
-	return Date.now() - last_updated.getTime() > UPDATE_INTERVAL;
+	const timeSinceUpdate = Date.now() - last_updated.getTime();
+	const shouldUpdate = timeSinceUpdate > UPDATE_INTERVAL;
+
+	if (shouldUpdate) {
+		console.error(
+			`Update needed for ${package_name || variant || 'docs'}: ${Math.round(timeSinceUpdate / (1000 * 60 * 60))} hours since last update (refresh interval: ${Math.round(UPDATE_INTERVAL / (1000 * 60 * 60))} hours)`,
+		);
+	}
+
+	return shouldUpdate;
 };
 
 export const get_doc_resources = async () => {
