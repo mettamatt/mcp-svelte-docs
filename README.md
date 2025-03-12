@@ -6,14 +6,20 @@ and optimized content delivery. This server integrates directly with
 Svelte's official documentation, offering both full and compressed
 variants suitable for different LLM context window sizes.
 
-> This is a fork of [spences10/mcp-svelte-docs](https://github.com/spences10/mcp-svelte-docs) 
+> This is a fork of
+> [spences10/mcp-svelte-docs](https://github.com/spences10/mcp-svelte-docs)
 > with a few modifications:
 >
-> - **Deeper Integration**: Improved detection of Svelte-related queries across all MCP tools with context-aware keyword detection
-> - **Refresh Options**: Configurable refresh intervals (daily or weekly) using command line flags
-> - **Prompts Capability**: Added support for MCP Prompts, including documentation overview and quick search functions
-> - **Background Initialization**: Faster server starts while docs are being fetched in the background
-> - **Testing Tools**: Added test scripts for keyword detection and search functionality
+> - **Deeper Integration**: Improved detection of Svelte-related
+>   queries across all MCP tools with context-aware keyword detection
+> - **Refresh Options**: Configurable refresh intervals (daily or
+>   weekly) using command line flags
+> - **Prompts Capability**: Added support for MCP Prompts, including
+>   documentation overview and quick search functions
+> - **Background Initialization**: Faster server starts while docs are
+>   being fetched in the background
+> - **Testing Tools**: Added test scripts for keyword detection and
+>   search functionality
 
 ## Features
 
@@ -21,7 +27,8 @@ variants suitable for different LLM context window sizes.
 - 🔍 Advanced search capabilities:
   - Document type filtering (API, Tutorial, Example, Error)
   - Section hierarchy awareness
-  - Intelligent relevance scoring based on term frequency, section importance, document type relevance, and key concept weighting
+  - Intelligent relevance scoring based on term frequency, section
+    importance, document type relevance, and key concept weighting
   - Context-aware result excerpts
   - Category-based result grouping
   - Exact phrase matching with quotes
@@ -29,7 +36,8 @@ variants suitable for different LLM context window sizes.
 - 🔎 Automatic Svelte query detection:
   - Recognizes Svelte-related terms across all MCP tools
   - Context-aware keyword detection
-  - Detects Svelte runes, components, lifecycle, and other key concepts
+  - Detects Svelte runes, components, lifecycle, and other key
+    concepts
   - Proactively suggests Svelte documentation when relevant
 - 🧠 Smart prompts for documentation overview and quick search
 - 🤖 Enhanced Claude Code integration
@@ -76,7 +84,8 @@ With refresh option:
 }
 ```
 
-> **Note:** The server runs over standard I/O transport, not HTTP. It doesn't require any open ports for normal operation.
+> **Note:** The server runs over standard I/O transport, not HTTP. It
+> doesn't require any open ports for normal operation.
 
 ### Claude Desktop with WSL Configuration
 
@@ -116,13 +125,17 @@ With refresh option:
 
 ### Environment Variables
 
-- `LIBSQL_URL` (optional): URL for the LibSQL database. Defaults to `file:local.db`
-- `LIBSQL_AUTH_TOKEN` (optional): Auth token for remote LibSQL database
+- `LIBSQL_URL` (optional): URL for the LibSQL database. Defaults to
+  `file:local.db`
+- `LIBSQL_AUTH_TOKEN` (optional): Auth token for remote LibSQL
+  database
 
 ### Command Line Options
 
-- `--refresh` or `--refresh=DAILY`: Force refresh of documentation on startup and set daily refresh interval
-- `--refresh=WEEKLY`: Force refresh of documentation on startup and set weekly refresh interval
+- `--refresh` or `--refresh=DAILY`: Force refresh of documentation on
+  startup and set daily refresh interval
+- `--refresh=WEEKLY`: Force refresh of documentation on startup and
+  set weekly refresh interval
 
 ## API
 
@@ -135,19 +148,21 @@ Access documentation through these URIs:
 - `svelte-docs://docs/llms.txt` - Documentation index
 - `svelte-docs://docs/llms-full.txt` - Complete documentation
 - `svelte-docs://docs/llms-small.txt` - Compressed documentation
-- `svelte-docs://docs/{package}/llms.txt` - Package-specific documentation
+- `svelte-docs://docs/{package}/llms.txt` - Package-specific
+  documentation
   - Supported packages: svelte, kit, cli
 
 ### Tools
 
 #### svelte_search_docs
 
-Enhanced search functionality with advanced filtering and context awareness.
-(Renamed from `search_docs` in the original repository)
+Enhanced search functionality with advanced filtering and context
+awareness. (Renamed from `search_docs` in the original repository)
 
 Parameters:
 
-- `query` (string, required): Search keywords or natural language query
+- `query` (string, required): Search keywords or natural language
+  query
 - `doc_type` (string, optional): Filter by documentation type
   - Values: 'api', 'tutorial', 'example', 'error', 'all'
   - Default: 'all'
@@ -186,13 +201,14 @@ Example Usage:
 
 #### svelte_get_next_chunk
 
-Retrieve subsequent chunks of large Svelte documentation.
-(Renamed from `get_next_chunk` in the original repository)
+Retrieve subsequent chunks of large Svelte documentation. (Renamed
+from `get_next_chunk` in the original repository)
 
 Parameters:
 
 - `uri` (string, required): Document URI
-- `chunk_number` (number, required): Chunk number to retrieve (1-based)
+- `chunk_number` (number, required): Chunk number to retrieve
+  (1-based)
 
 ### Prompts
 
@@ -201,6 +217,7 @@ Parameters:
 Get an overview of Svelte documentation.
 
 Parameters:
+
 - `package` (string, optional): Filter by package
   - Values: 'svelte', 'kit', 'cli'
   - Default: 'svelte'
@@ -210,6 +227,7 @@ Parameters:
 Quickly search Svelte documentation for specific terms.
 
 Parameters:
+
 - `query` (string, required): The search term
 
 ## Automatic Svelte Query Detection
@@ -221,7 +239,9 @@ The server features an intelligent keyword detection system that:
 3. Works across all MCP tools, not just Svelte-specific ones
 4. Suggests using the svelte_search_docs tool when relevant
 
-This helps Claude Code automatically discover Svelte documentation when users ask questions that might benefit from it, even without explicitly asking for Svelte docs.
+This helps Claude Code automatically discover Svelte documentation
+when users ask questions that might benefit from it, even without
+explicitly asking for Svelte docs.
 
 ## Development
 
@@ -240,7 +260,8 @@ pnpm dev -- --mcp-debug
 pnpm start
 ```
 
-> **Note:** The MCP Inspector debug UI is only needed for development and troubleshooting.
+> **Note:** The MCP Inspector debug UI is only needed for development
+> and troubleshooting.
 
 ### Testing
 
@@ -274,6 +295,8 @@ MIT License - see the [LICENSE](LICENSE) file for details.
 ## Acknowledgments
 
 - Originally created by [Scott Spence](https://github.com/spences10)
-- Built on the [Model Context Protocol](https://github.com/modelcontextprotocol)
+- Built on the
+  [Model Context Protocol](https://github.com/modelcontextprotocol)
 - Powered by [Svelte Documentation](https://svelte.dev)
-- Uses [LibSQL](https://github.com/libsql/libsql) for efficient caching
+- Uses [LibSQL](https://github.com/libsql/libsql) for efficient
+  caching

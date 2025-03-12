@@ -53,6 +53,7 @@
 	"dependencies": {
 		"@libsql/client": "^0.14.0",
 		"@modelcontextprotocol/sdk": "1.4.1",
+		"@wong2/mcp-cli": "^1.6.0",
 		"zod": "^3.24.2"
 	},
 	"devDependencies": {
