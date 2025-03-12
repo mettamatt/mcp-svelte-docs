@@ -215,7 +215,21 @@ const process_docs = async (
 				processed_docs.push(doc);
 
 				// Prepare index data
-				const terms = section
+				// First extract special terms like $state, $derived, etc.
+				const specialTerms: Record<string, number> = {};
+				const specialPattern = /\$[a-zA-Z][a-zA-Z0-9_]*/g;
+				let specialMatch;
+				while (
+					(specialMatch = specialPattern.exec(
+						section.toLowerCase(),
+					)) !== null
+				) {
+					const term = specialMatch[0];
+					specialTerms[term] = (specialTerms[term] || 0) + 1;
+				}
+
+				// Then extract normal terms
+				const normalTerms = section
 					.toLowerCase()
 					.split(/\W+/)
 					.filter((term) => term.length > 2)
@@ -226,6 +240,9 @@ const process_docs = async (
 						},
 						{} as Record<string, number>,
 					);
+
+				// Combine both sets of terms
+				const terms = { ...normalTerms, ...specialTerms };
 
 				index_operations.push({
 					id: doc.id,

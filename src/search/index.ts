@@ -128,8 +128,8 @@ export async function search_docs({
 	//    Also filter doc_type and package if provided
 	//    For exact_phrases, we do AND d.content LIKE ... for each
 	//    Summation is the sum of frequencies, plus the per-term weighting from the CASE expression
-	//    If you want “AND” logic (require all terms), we do a HAVING count(DISTINCT si.term) = distinctTerms.length
-	//    If you want “OR” logic, remove that HAVING line.
+	//    If you want "AND" logic (require all terms), we do a HAVING count(DISTINCT si.term) = distinctTerms.length
+	//    If you want "OR" logic, remove that HAVING line.
 	let sql = `
     SELECT
       d.id,
@@ -236,8 +236,8 @@ export async function search_docs({
 	}
 
 	// 11. Group & Having
-	//     If you want “OR” logic, omit the HAVING.
-	//     If you want “AND” logic (require all distinctTerms), do:
+	//     If you want "OR" logic, omit the HAVING.
+	//     If you want "AND" logic (require all distinctTerms), do:
 	sql += `
     GROUP BY d.id, d.content, d.type, d.package, d.hierarchy
     ORDER BY total_score DESC
@@ -246,8 +246,7 @@ export async function search_docs({
 
 	// 12. Execute
 	const results = await db.execute({ sql, args });
-
-	const search_results: SearchResult[] = results.rows.map(
+	let search_results: SearchResult[] = results.rows.map(
 		(row: any) => ({
 			content: row.content,
 			type: row.type as DocType,
@@ -259,6 +258,118 @@ export async function search_docs({
 			category: determine_category(row.content),
 		}),
 	);
+
+	// 12a. Fallback to optimized content search if no results from term search
+	if (
+		search_results.length === 0 &&
+		(distinctTerms.length > 0 || exact_phrases.length > 0)
+	) {
+		console.error(
+			'No results from term search, falling back to optimized content search',
+		);
+
+		// OPTIMIZATION: Better approach using OR conditions with weighted scoring
+		const searchTerms = [];
+
+		// First, add special terms with higher priority
+		for (const term of distinctTerms) {
+			if (term.includes('$') || TERM_WEIGHTS[term] !== undefined) {
+				searchTerms.push({ term, weight: TERM_WEIGHTS[term] || 1.5 });
+			}
+		}
+
+		// Then add other terms (limited to 3 to prevent performance issues)
+		const otherTerms = distinctTerms
+			.filter(
+				(t) =>
+					!t.includes('$') &&
+					TERM_WEIGHTS[t] === undefined &&
+					t.length > 3,
+			)
+			.slice(0, 3);
+
+		for (const term of otherTerms) {
+			searchTerms.push({ term, weight: 1.0 });
+		}
+
+		// Add exact phrases with highest weight
+		for (const phrase of exact_phrases) {
+			searchTerms.push({ term: phrase, weight: 2.0, isPhrase: true });
+		}
+
+		if (searchTerms.length > 0) {
+			// Build dynamic SQL with CASE statement for proper scoring
+			let fallbackSql = `
+				SELECT d.id, d.content, d.type, d.package, d.hierarchy,
+				(
+			`;
+
+			// Build a sum of weighted matches
+			const conditions = [];
+			const fallbackArgs = [];
+
+			for (const { term, weight, isPhrase } of searchTerms) {
+				conditions.push(
+					`CASE WHEN LOWER(d.content) LIKE ? THEN ${weight} ELSE 0 END`,
+				);
+				fallbackArgs.push(`%${term}%`);
+			}
+
+			fallbackSql += conditions.join(' + ');
+			fallbackSql += `) AS relevance_score
+				FROM docs d
+				WHERE (
+			`;
+
+			// Build OR conditions for the WHERE clause
+			const whereConditions = searchTerms.map(
+				() => 'LOWER(d.content) LIKE ?',
+			);
+			fallbackSql += whereConditions.join(' OR ');
+			fallbackSql += ')';
+
+			// Add search terms to args again for the WHERE clause
+			for (const { term } of searchTerms) {
+				fallbackArgs.push(`%${term}%`);
+			}
+
+			// Add filters for doc_type and package
+			if (doc_type !== 'all') {
+				fallbackSql += ' AND d.type = ?';
+				fallbackArgs.push(doc_type);
+			}
+
+			if (pkg) {
+				fallbackSql += ' AND d.package = ?';
+				fallbackArgs.push(pkg);
+			}
+
+			fallbackSql += `
+				ORDER BY relevance_score DESC
+				LIMIT 10
+			`;
+
+			const fallbackResults = await db.execute({
+				sql: fallbackSql,
+				args: fallbackArgs,
+			});
+
+			search_results = fallbackResults.rows.map((row: any) => ({
+				content: row.content,
+				type: row.type as DocType,
+				package: row.package as Package,
+				hierarchy: row.hierarchy
+					? JSON.parse(row.hierarchy)
+					: undefined,
+				relevance_score: row.relevance_score,
+				category: determine_category(row.content),
+			}));
+
+			console.error(
+				`Optimized fallback search found ${search_results.length} results`,
+			);
+		}
+	}
 
 	// 13. Group results by category (same as your original code)
 	const grouped = group_by_category(search_results);
