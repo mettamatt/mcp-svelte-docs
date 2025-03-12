@@ -60,7 +60,7 @@ Add this to your Cline MCP settings:
 			"command": "npx",
 			"args": ["-y", "mcp-svelte-docs"],
 			"env": {
-				"LIBSQL_URL": "file:local.db",
+				"LIBSQL_URL": "file:./svelte-docs.db",
 				"LIBSQL_AUTH_TOKEN": "your-auth-token-if-using-remote-db"
 			}
 		}
@@ -77,7 +77,7 @@ With refresh option:
 			"command": "npx",
 			"args": ["-y", "mcp-svelte-docs", "--refresh=WEEKLY"],
 			"env": {
-				"LIBSQL_URL": "file:local.db"
+				"LIBSQL_URL": "file:./svelte-docs.db"
 			}
 		}
 	}
@@ -99,7 +99,7 @@ For WSL environments, add this to your Claude Desktop configuration:
 			"args": [
 				"bash",
 				"-c",
-				"LIBSQL_URL=file:local.db LIBSQL_AUTH_TOKEN=your-token npx -y mcp-svelte-docs"
+				"LIBSQL_URL=file:./svelte-docs.db LIBSQL_AUTH_TOKEN=your-token npx -y mcp-svelte-docs"
 			]
 		}
 	}
@@ -116,7 +116,7 @@ With refresh option:
 			"args": [
 				"bash",
 				"-c",
-				"LIBSQL_URL=file:local.db npx -y mcp-svelte-docs --refresh=WEEKLY"
+				"LIBSQL_URL=file:./svelte-docs.db npx -y mcp-svelte-docs --refresh=WEEKLY"
 			]
 		}
 	}
@@ -126,7 +126,7 @@ With refresh option:
 ### Environment Variables
 
 - `LIBSQL_URL` (optional): URL for the LibSQL database. Defaults to
-  `file:local.db`
+  `file:./svelte-docs.db`
 - `LIBSQL_AUTH_TOKEN` (optional): Auth token for remote LibSQL
   database
 
@@ -258,6 +258,9 @@ pnpm dev -- --mcp-debug
 
 # Without inspector (runs on stdio only, recommended for production)
 pnpm start
+
+# Test with mcp-cli
+npx @wong2/mcp-cli node dist/index.js --refresh=DAILY
 ```
 
 > **Note:** The MCP Inspector debug UI is only needed for development
