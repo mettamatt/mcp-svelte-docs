@@ -6,13 +6,14 @@ import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 import {
 	ListToolsRequestSchema,
 	CallToolRequestSchema,
+	// Removed prompts references:
+	// ListPromptsRequestSchema,
+	// GetPromptRequestSchema,
+	// Also remove them from "capabilities"
 	ListResourcesRequestSchema,
 	ReadResourceRequestSchema,
-	ListPromptsRequestSchema,
-	GetPromptRequestSchema,
 	Tool,
 	ResourceContents,
-	Prompt,
 } from '@modelcontextprotocol/sdk/types.js';
 
 import { z } from 'zod';
@@ -31,13 +32,30 @@ import {
 	Package,
 	setRefreshMode,
 } from './docs/fetcher.js';
-import { search_docs } from './search/index.js';
+import { search_docs, TERM_WEIGHTS } from './search/index.js';
 
-// Parse command line arguments
-const args = process.argv.slice(2);
-let refreshMode: 'DAILY' | 'WEEKLY' | undefined;
+// Keywords that need context
+const CONTEXT_REQUIRED_TERMS = new Set([
+	'error',
+	'warning',
+	'debug',
+	'store',
+	'load',
+	'action',
+]);
+
+// Additional strong Svelte indicators
+const ADDITIONAL_SVELTE_TERMS = new Set([
+	'svelte',
+	'sveltekit',
+	'svelte.js',
+	'runes',
+	'state',
+]);
 
 // Simple argument parsing
+const args = process.argv.slice(2);
+let refreshMode: 'DAILY' | 'WEEKLY' | undefined;
 for (let i = 0; i < args.length; i++) {
 	const arg = args[i].toUpperCase();
 	if (arg === '--REFRESH' || arg === '--REFRESH=DAILY') {
@@ -46,8 +64,6 @@ for (let i = 0; i < args.length; i++) {
 		refreshMode = 'WEEKLY';
 	}
 }
-
-// Set refresh mode if provided
 if (refreshMode) {
 	console.error(
 		`Setting documentation refresh mode to: ${refreshMode}`,
@@ -65,22 +81,21 @@ const pkg = JSON.parse(
 const { name, version } = pkg;
 
 // ------------------------------------------------------------
-// 1) Create the modern MCP Server instance
+// 1) Create the Svelte MCP Server instance
 // ------------------------------------------------------------
 const server = new Server(
 	{ name, version },
 	{
-		// Enable or customize capabilities
 		capabilities: {
-			tools: {},
-			resources: {},
-			prompts: {}, // Enabled prompts capability
+			tools: {}, // STILL providing Tools
+			// Removed "prompts" capability
+			resources: {}, // STILL providing Resources if you want
 		},
 	},
 );
 
 // ------------------------------------------------------------
-// 2) Define Tools (as plain objects)
+// 2) Define Tools
 // ------------------------------------------------------------
 const SVELTE_SEARCH_DOCS_TOOL: Tool = {
 	name: 'svelte_search_docs',
@@ -145,39 +160,7 @@ const SVELTE_GET_NEXT_CHUNK_TOOL: Tool = {
 };
 
 // ------------------------------------------------------------
-// 3) Define Prompts
-// ------------------------------------------------------------
-const SVELTE_DOCS_PROMPT: Prompt = {
-	name: 'svelte_docs_overview',
-	description: 'Get an overview of Svelte documentation',
-	arguments: [
-		{
-			name: 'package',
-			description:
-				'The package to get documentation for (svelte, kit, or cli)',
-			type: 'string',
-			enum: ['svelte', 'kit', 'cli'],
-			required: false,
-		},
-	],
-};
-
-const SVELTE_QUICK_SEARCH_PROMPT: Prompt = {
-	name: 'svelte_quick_search',
-	description:
-		'Quickly search Svelte documentation for a specific term',
-	arguments: [
-		{
-			name: 'query',
-			description: 'The term to search for',
-			type: 'string',
-			required: true,
-		},
-	],
-};
-
-// ------------------------------------------------------------
-// 4) List Tools
+// 3) List Tools
 // ------------------------------------------------------------
 server.setRequestHandler(ListToolsRequestSchema, async () => {
 	return {
@@ -186,166 +169,8 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
 });
 
 // ------------------------------------------------------------
-// 5) List Prompts
+// 4) Helper: Detect if query might be Svelte-related
 // ------------------------------------------------------------
-server.setRequestHandler(ListPromptsRequestSchema, async () => {
-	return {
-		prompts: [SVELTE_DOCS_PROMPT, SVELTE_QUICK_SEARCH_PROMPT],
-	};
-});
-
-// ------------------------------------------------------------
-// 6) Get Prompt
-// ------------------------------------------------------------
-server.setRequestHandler(GetPromptRequestSchema, async (request) => {
-	const { name, arguments: promptArgs } = request.params;
-
-	switch (name) {
-		case 'svelte_docs_overview': {
-			const packageName = promptArgs?.package || 'svelte';
-			let overview = `# ${packageName.toUpperCase()} Documentation Overview\n\n`;
-
-			// Get overview information from the database or generate it
-			// This is a placeholder - you would likely implement real logic here
-			if (packageName === 'svelte') {
-				overview +=
-					'Svelte is a new approach to building user interfaces. ' +
-					'Whereas traditional frameworks like React and Vue do the bulk of their work in the browser, ' +
-					'Svelte shifts that work into a compile step that happens when you build your app.\n\n' +
-					'Key sections of Svelte documentation include:\n' +
-					'- Tutorial: Interactive lessons to learn Svelte\n' +
-					'- API Documentation: Complete reference\n' +
-					'- Examples: Practical demonstrations\n' +
-					'- FAQ: Common questions and answers';
-			} else if (packageName === 'kit') {
-				overview +=
-					'SvelteKit is a framework for building web applications of all sizes, ' +
-					'with a beautiful development experience and flexible filesystem-based routing.\n\n' +
-					'Key sections of SvelteKit documentation include:\n' +
-					'- Getting Started: Setup instructions\n' +
-					'- Routing: Page and API routes\n' +
-					'- Loading Data: Server and client data fetching\n' +
-					'- Forms: Progressive enhancement\n' +
-					'- Deployment: Building and hosting';
-			} else if (packageName === 'cli') {
-				overview +=
-					'The Svelte CLI provides tools for creating new projects, ' +
-					'managing dependencies, and preparing for production deployment.\n\n' +
-					'Key commands include:\n' +
-					'- create: Initialize a new project\n' +
-					'- dev: Start development server\n' +
-					'- build: Create production build\n' +
-					'- preview: Preview production build';
-			}
-
-			return {
-				messages: [
-					{
-						role: 'assistant',
-						content: {
-							type: 'text',
-							text: overview,
-						},
-					},
-				],
-			};
-		}
-
-		case 'svelte_quick_search': {
-			if (!promptArgs?.query) {
-				return {
-					isError: true,
-					error: 'Query parameter is required',
-					messages: [],
-				};
-			}
-
-			// Use the existing search_docs function to get results
-			const { results } = await search_docs({
-				query: promptArgs.query,
-				doc_type: 'all',
-				context: 1,
-				include_hierarchy: true,
-			});
-
-			if (results.length === 0) {
-				return {
-					messages: [
-						{
-							role: 'assistant',
-							content: {
-								type: 'text',
-								text: `No results found for "${promptArgs.query}". Try a different search term.`,
-							},
-						},
-					],
-				};
-			}
-
-			// Format the top 3 results (or fewer if less are available)
-			const topResults = results.slice(0, 3);
-			let responseText = `# Quick Search Results for "${promptArgs.query}"\n\n`;
-
-			topResults.forEach((result, idx) => {
-				responseText += `## Result ${idx + 1}\n`;
-				if (result.hierarchy) {
-					responseText += `**Path:** ${result.hierarchy.join(' > ')}\n\n`;
-				}
-				responseText += `**Type:** ${result.type} | **Package:** ${result.package || 'core'}\n\n`;
-				responseText += `${result.content}\n\n`;
-			});
-
-			responseText += `\nFound ${results.length} total results. Use the \`svelte_search_docs\` tool for more detailed searching.`;
-
-			return {
-				messages: [
-					{
-						role: 'assistant',
-						content: {
-							type: 'text',
-							text: responseText,
-						},
-					},
-				],
-			};
-		}
-
-		default:
-			return {
-				isError: true,
-				error: `Unknown prompt: ${name}`,
-				messages: [],
-			};
-	}
-});
-
-// ------------------------------------------------------------
-// 7) Call Tool (the switch logic for each tool)
-// ------------------------------------------------------------
-// Import TERM_WEIGHTS from search module
-import { TERM_WEIGHTS } from './search/index.js';
-
-// Define the keywords that should have additional context to trigger Svelte docs
-// These are more generic terms that need to be paired with another Svelte term
-const CONTEXT_REQUIRED_TERMS = new Set([
-	'error',
-	'warning',
-	'debug',
-	'store',
-	'load',
-	'action',
-]);
-
-// Additional strong Svelte indicators not in TERM_WEIGHTS
-const ADDITIONAL_SVELTE_TERMS = new Set([
-	'svelte',
-	'sveltekit',
-	'svelte.js',
-	'runes',
-	'state',
-]);
-
-// Helper to detect if a query might be Svelte-related
 function isSvelteQuery(query: string): boolean {
 	const lowercaseQuery = query.toLowerCase();
 
@@ -361,17 +186,15 @@ function isSvelteQuery(query: string): boolean {
 
 	// Count direct term matches
 	let svelteTermMatches = 0;
-
 	for (const term of queryTerms) {
 		if (term.length < 3) continue;
 
-		// If we have a direct match with a TERM_WEIGHTS key
+		// If we have a direct match with a known weighted term
 		if (term in TERM_WEIGHTS) {
-			// If this is a term requiring context, we need to look for another match
+			// If this term requires context, skip counting it alone
 			if (CONTEXT_REQUIRED_TERMS.has(term)) {
-				continue; // Skip counting this as a direct match
+				continue;
 			}
-
 			svelteTermMatches++;
 			if (svelteTermMatches >= 1) {
 				return true;
@@ -386,16 +209,17 @@ function isSvelteQuery(query: string): boolean {
 		)
 	) {
 		for (const term of queryTerms) {
-			// Must be at least one other Svelte term
 			if (term in TERM_WEIGHTS && !CONTEXT_REQUIRED_TERMS.has(term)) {
 				return true;
 			}
 		}
 	}
-
 	return false;
 }
 
+// ------------------------------------------------------------
+// 5) Handle CallTool Requests
+// ------------------------------------------------------------
 server.setRequestHandler(CallToolRequestSchema, async (request) => {
 	const { name: toolName, arguments: toolArgs } = request.params;
 
@@ -406,32 +230,29 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 				{ type: 'text', text: 'No tool arguments provided.' },
 			],
 			isError: true,
-			error: 'No tool arguments provided.',
 		};
 	}
 
 	try {
-		// Auto-detect Svelte queries even when another tool is called
+		// Auto-detect Svelte queries even if user calls the wrong tool
 		if (
 			toolName !== 'svelte_search_docs' &&
 			'query' in toolArgs &&
 			typeof toolArgs.query === 'string' &&
-			// Fast check first - only proceed if query contains "svelte" to save time
 			toolArgs.query.toLowerCase().includes('svelte') &&
 			isSvelteQuery(toolArgs.query)
 		) {
 			console.error(
 				`Detected Svelte-related query in ${toolName}: ${toolArgs.query}`,
 			);
-
-			// Don't search yet, just notify that this is a Svelte query
 			return {
 				content: [
 					{
 						type: 'text',
-						text: `This query appears to be related to Svelte. For detailed information, you can use the 'svelte_search_docs' tool with the query: "${toolArgs.query}"`,
+						text: `This query appears to be related to Svelte. Consider using the 'svelte_search_docs' tool with query: "${toolArgs.query}"`,
 					},
 				],
+				isError: false,
 			};
 		}
 
@@ -440,7 +261,6 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 			// svelte_search_docs
 			// ~~~~~~~~~~~~~
 			case 'svelte_search_docs': {
-				// Validate with Zod for safety
 				const schema = z.object({
 					query: z.string(),
 					doc_type: z
@@ -468,10 +288,13 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 							notFound += `- ${s.term}\n`;
 						});
 					}
-					return { content: [{ type: 'text', text: notFound }] };
+					return {
+						content: [{ type: 'text', text: notFound }],
+						isError: false,
+					};
 				}
 
-				// Format
+				// Format output
 				let response = 'SEARCH RESULTS:\n\n';
 				results.forEach((r, idx) => {
 					response += `[${idx + 1}] `;
@@ -492,7 +315,10 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 					});
 				}
 
-				return { content: [{ type: 'text', text: response }] };
+				return {
+					content: [{ type: 'text', text: response }],
+					isError: false,
+				};
 			}
 
 			// ~~~~~~~~~~~~~
@@ -511,11 +337,10 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 							{ type: 'text', text: `Invalid URI: ${args.uri}` },
 						],
 						isError: true,
-						error: `Invalid URI: ${args.uri}`,
 					};
 				}
 
-				// Derive package_name / variant from the path
+				// Derive package/variant from the path
 				const path = args.uri.substring('svelte-docs://docs/'.length);
 				let package_name: Package | undefined;
 				let variant: DocVariant | undefined;
@@ -543,18 +368,17 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 								},
 							],
 							isError: true,
-							error: `Invalid doc variant: ${path}`,
 						};
 					}
 				}
 
-				// DB query
+				// DB query for chunk
 				const result = await db.execute({
 					sql: `SELECT content FROM docs
-                WHERE (package = ? OR package IS NULL)
-                  AND (variant = ? OR variant IS NULL)
-                ORDER BY id
-                LIMIT 1 OFFSET ?`,
+                          WHERE (package = ? OR package IS NULL)
+                            AND (variant = ? OR variant IS NULL)
+                          ORDER BY id
+                          LIMIT 1 OFFSET ?`,
 					args: [
 						package_name ?? null,
 						variant ?? null,
@@ -568,7 +392,6 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 							{ type: 'text', text: 'No more chunks available' },
 						],
 						isError: true,
-						error: 'No more chunks available',
 					};
 				}
 
@@ -576,6 +399,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 					content: [
 						{ type: 'text', text: String(result.rows[0].content) },
 					],
+					isError: false,
 				};
 			}
 
@@ -588,52 +412,68 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 						{ type: 'text', text: `Unknown tool: ${toolName}` },
 					],
 					isError: true,
-					error: `Unknown tool: ${toolName}`,
 				};
 		}
 	} catch (err) {
+		const errMsg = err instanceof Error ? err.message : String(err);
 		return {
 			content: [
 				{
 					type: 'text',
-					text: `Error running tool "${toolName}": ${
-						err instanceof Error ? err.message : String(err)
-					}`,
+					text: `Error running tool "${toolName}": ${errMsg}`,
 				},
 			],
 			isError: true,
-			error: `Error running tool "${toolName}": ${
-				err instanceof Error ? err.message : String(err)
-			}`,
 		};
 	}
 });
 
 // ------------------------------------------------------------
-// 8) Resources Handlers (ListResources & ResourceRequest)
+// 6) Resources Handlers (if you still want them)
 // ------------------------------------------------------------
 server.setRequestHandler(ListResourcesRequestSchema, async () => {
-	return await get_doc_resources();
+	try {
+		const resources = await get_doc_resources();
+		return {
+			...resources,
+			isError: false, // unify with Brave style
+		};
+	} catch (error) {
+		return {
+			contents: [],
+			isError: true,
+			content: [
+				{
+					type: 'text',
+					text: `Error listing resources: ${
+						error instanceof Error ? error.message : String(error)
+					}`,
+				},
+			],
+		};
+	}
 });
 
 server.setRequestHandler(
 	ReadResourceRequestSchema,
 	async (request) => {
 		const { uri } = request.params;
-
 		if (!uri.startsWith('svelte-docs://docs/')) {
 			return {
 				contents: [],
 				isError: true,
-				error: `Unrecognized URI: ${uri}`,
+				content: [
+					{
+						type: 'text',
+						text: `Unrecognized URI: ${uri}`,
+					},
+				],
 			};
 		}
 
-		// Determine if it's a package or a variant
 		const path = uri.replace('svelte-docs://docs/', '');
 		let package_name: Package | null = null;
 		let variant: DocVariant | null = null;
-
 		if (
 			path.startsWith('svelte/') ||
 			path.startsWith('kit/') ||
@@ -650,99 +490,109 @@ server.setRequestHandler(
 			variant = variant_map[path] ?? null;
 		}
 
-		// Check if we need to update docs based on refresh mode
-		// If refresh mode is set, we use it to determine if we should force a refresh
-		const forceRefresh = refreshMode !== undefined;
-		if (
-			await should_update_docs(
-				package_name ?? undefined,
-				variant ?? undefined,
-				forceRefresh,
-			)
-		) {
-			console.error(
-				`Updating docs for ${package_name || variant || 'all'} with refresh mode: ${refreshMode || 'DEFAULT'}`,
-			);
-			await fetch_docs(
-				package_name ?? undefined,
-				variant ?? undefined,
-			);
-		}
+		try {
+			// Possible forced refresh if you want
+			const forceRefresh = refreshMode !== undefined;
+			if (
+				await should_update_docs(
+					package_name ?? undefined,
+					variant ?? undefined,
+					forceRefresh,
+				)
+			) {
+				console.error(
+					`Updating docs for ${package_name || variant || 'all'} with refresh mode: ${
+						refreshMode || 'DEFAULT'
+					}`,
+				);
+				await fetch_docs(
+					package_name ?? undefined,
+					variant ?? undefined,
+				);
+			}
 
-		// Grab the doc from the DB
-		const result = await db.execute({
-			sql: `SELECT content FROM docs
-          WHERE (package = ? OR package IS NULL)
-            AND (variant = ? OR variant IS NULL)
-          LIMIT 1`,
-			args: [package_name, variant],
-		});
+			const result = await db.execute({
+				sql: `SELECT content FROM docs
+                  WHERE (package = ? OR package IS NULL)
+                    AND (variant = ? OR variant IS NULL)
+                  LIMIT 1`,
+				args: [package_name, variant],
+			});
 
-		if (result.rows.length === 0) {
+			if (result.rows.length === 0) {
+				return {
+					contents: [],
+					isError: true,
+					content: [
+						{
+							type: 'text',
+							text: `Documentation not found for URI: ${uri}`,
+						},
+					],
+				};
+			}
+
+			const docText = String(result.rows[0].content);
+			const resourceContent: ResourceContents = {
+				uri,
+				text: docText,
+				mimeType: 'text/plain',
+			};
+
+			return {
+				contents: [resourceContent],
+				isError: false,
+			};
+		} catch (error) {
 			return {
 				contents: [],
 				isError: true,
-				error: `Documentation not found for URI: ${uri}`,
+				content: [
+					{
+						type: 'text',
+						text: `Error reading resource: ${
+							error instanceof Error ? error.message : String(error)
+						}`,
+					},
+				],
 			};
 		}
-
-		const docText = String(result.rows[0].content);
-
-		const resourceContent: ResourceContents = {
-			uri,
-			text: docText,
-			mimeType: 'text/plain',
-		};
-
-		return { contents: [resourceContent] };
 	},
 );
 
 // ------------------------------------------------------------
-// 9) Server Startup & Graceful Shutdown
+// 7) Server Startup & Background Initialization
 // ------------------------------------------------------------
 async function runServer() {
 	try {
-		// Start server immediately without waiting for database initialization
 		const transport = new StdioServerTransport();
 		await server.connect(transport);
-		console.error(
-			'Svelte Docs MCP Server (modern style) running on stdio',
-		);
+		console.error('Svelte Docs MCP Server running on stdio');
 
-		// Set a flag to track database ready state
-		let dbReady = false;
-
-		// Initialize DB and docs in the background
+		// Initialize DB & docs in background
 		(async () => {
 			try {
-				// Set a timeout to log if initialization is taking too long
 				const timeoutId = setTimeout(() => {
-					if (!dbReady) {
-						console.error(
-							'Database initialization still in progress after 5 seconds',
-						);
-					}
+					console.error(
+						'Database initialization still in progress after 5 seconds',
+					);
 				}, 5000);
 
-				// Try to verify the DB first - if it's already good, we're done
+				let dbReady = false;
 				try {
 					dbReady = await verify_db();
 					if (dbReady) {
-						console.error(
-							'Database already initialized and verified',
-						);
+						console.error('Database is already verified');
 						clearTimeout(timeoutId);
 						return;
 					}
 				} catch (verifyError) {
 					console.error(
-						'Database verification failed, will try to initialize:',
+						'Database verification failed; will try to init:',
 						verifyError,
 					);
 				}
 
-				// Check if we need to create the schema
 				try {
 					const dbCheck = await db.execute(
 						"SELECT name FROM sqlite_master WHERE type='table' AND name='docs'",
@@ -751,37 +601,23 @@ async function runServer() {
 						await init_db();
 					}
 				} catch (schemaError) {
-					console.error(
-						'Error checking database schema:',
-						schemaError,
-					);
+					console.error('Error checking DB schema:', schemaError);
 					await init_db();
 				}
 
-				// Initialize docs
 				await init_docs();
-
-				// Verify again
 				dbReady = await verify_db();
 				if (!dbReady) {
 					console.error(
-						'WARNING: Database verification still failing after initialization',
+						'WARNING: Database verification still failing after init.',
 					);
 				} else {
-					console.error(
-						'Database successfully initialized and verified',
-					);
+					console.error('Database initialized & verified');
 				}
-
 				clearTimeout(timeoutId);
-			} catch (error) {
-				console.error(
-					'Error during background initialization:',
-					error,
-				);
-				// Even if background init fails, server keeps running
-				// This is intentional - so that initial requests can be served
-				// while docs are being fetched
+			} catch (err) {
+				console.error('Error during background init:', err);
+				// Keep server running anyway
 			}
 		})();
 	} catch (error) {
@@ -790,7 +626,6 @@ async function runServer() {
 	}
 }
 
-// Graceful shutdown
 process.on('SIGINT', async () => {
 	console.error('Received SIGINT, shutting down...');
 	await server.close();
